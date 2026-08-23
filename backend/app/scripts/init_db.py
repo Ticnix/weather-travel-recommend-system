@@ -7,12 +7,15 @@
     1. 启用 timescaledb / vector / postgis 三大扩展
     2. 创建全部数据表
     3. 将 weather_history 转换为 TimescaleDB 超表
+    4. 播种默认管理员账号（admin / Admin@123456，幂等）
 """
 
 import asyncio
 
-from sqlalchemy import text
+from sqlalchemy import select, text
+from sqlalchemy.ext.asyncio import AsyncConnection
 
+from app.core.security import hash_password
 from app.db.base import Base
 from app.db.session import engine
 from app.models import (  # noqa: F401 确保模型注册
@@ -23,6 +26,30 @@ from app.models import (  # noqa: F401 确保模型注册
     User,
     WeatherHistory,
 )
+
+# 默认管理员（仅用于本地联调，生产请修改后重新初始化）
+DEFAULT_ADMIN_USERNAME = "admin"
+DEFAULT_ADMIN_PASSWORD = "Admin@123456"
+
+
+async def _seed_admin(conn: AsyncConnection) -> None:
+    """播种默认管理员账号（已存在则跳过，保证幂等）。"""
+    exists = await conn.execute(
+        select(User.id).where(User.username == DEFAULT_ADMIN_USERNAME)
+    )
+    if exists.scalar():
+        print(f">>> 管理员 {DEFAULT_ADMIN_USERNAME} 已存在，跳过播种")
+        return
+    await conn.execute(
+        User.__table__.insert().values(
+            username=DEFAULT_ADMIN_USERNAME,
+            password_hash=hash_password(DEFAULT_ADMIN_PASSWORD),
+            nickname="系统管理员",
+            role="admin",
+            is_active=True,
+        )
+    )
+    print(f">>> 已创建默认管理员 {DEFAULT_ADMIN_USERNAME} / {DEFAULT_ADMIN_PASSWORD}")
 
 
 async def run() -> None:
@@ -45,6 +72,9 @@ async def run() -> None:
                 ")"
             )
         )
+
+        print(">>> 播种默认管理员 ...")
+        await _seed_admin(conn)
 
     print(">>> 初始化完成 ✅")
 

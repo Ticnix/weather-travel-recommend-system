@@ -20,5 +20,22 @@ services:
     ports:
       - "6379:6379"
 
+  # Celery worker：处理清洗 / 气象同步 / 知识库索引等异步任务
+  # 依赖 postgres / redis，随 docker compose up 自动启动，无需手动拉起
+  celery:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: weather-backend:latest
+    container_name: weather-celery
+    working_dir: /app
+    env_file:
+      - ./backend/.env
+    command: celery -A app.celery_app worker -l info
+    depends_on:
+      - postgres
+      - redis
+    restart: unless-stopped
+
 volumes:
   pg_data:
