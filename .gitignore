@@ -1,0 +1,14 @@
+# python
+__pycache__/
+*.pyc
+venv/
+.env
+*.log
+
+# frontend
+node_modules/
+dist/
+*.local
+
+# docker
+*.volume

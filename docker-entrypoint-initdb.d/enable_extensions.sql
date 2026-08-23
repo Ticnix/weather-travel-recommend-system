@@ -1,0 +1,4 @@
+-- 数据库初始化时自动启用三大扩展（幂等）
+CREATE EXTENSION IF NOT EXISTS timescaledb;
+CREATE EXTENSION IF NOT EXISTS vector;
+CREATE EXTENSION IF NOT EXISTS postgis;

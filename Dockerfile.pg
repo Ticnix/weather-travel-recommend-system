@@ -1,0 +1,20 @@
+# 基于 pgvector/pgvector:pg17（Debian bookworm，自带 pgvector）
+# 通过 PGDG + TimescaleDB APT 源补齐 postgis 与 timescaledb，凑齐三大扩展
+FROM pgvector/pgvector:pg17
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        gnupg \
+        lsb-release \
+        apt-transport-https \
+        wget \
+        ca-certificates \
+    && wget --quiet -O - https://packagecloud.io/timescale/timescaledb/gpgkey \
+        | gpg --dearmor -o /etc/apt/trusted.gpg.d/timescaledb.gpg \
+    && echo "deb https://packagecloud.io/timescale/timescaledb/debian/ $(lsb_release -c -s) main" \
+        > /etc/apt/sources.list.d/timescaledb.list \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends \
+        timescaledb-2-postgresql-17 \
+        postgresql-17-postgis-3 \
+    && rm -rf /var/lib/apt/lists/*
