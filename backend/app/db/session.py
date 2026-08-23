@@ -34,7 +34,7 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
 async def init_db() -> None:
     """初始化数据库：启用扩展 -> 建表 -> 转换为 TimescaleDB 超表。"""
     from app.db.base import Base
-    from app.models import feedback, knowledge, landmark, news, user, weather  # noqa: F401
+    from app.models import clean_task, feedback, knowledge, landmark, news, user, weather  # noqa: F401
 
     async with engine.begin() as conn:
         # 1. 启用三大扩展（幂等）

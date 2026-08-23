@@ -9,6 +9,9 @@ celerybeat-schedule
 celerybeat-schedule-shm
 celerybeat-schedule-wal
 .pytest_cache/
+# 清洗模块运行期产生的上传与清洗结果文件
+backend/uploads/
+backend/cleaned/
 
 # frontend
 node_modules/

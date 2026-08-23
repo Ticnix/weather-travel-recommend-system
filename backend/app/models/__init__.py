@@ -1,4 +1,5 @@
-﻿from app.models.feedback import Feedback
+﻿from app.models.clean_task import CleanTask
+from app.models.feedback import Feedback
 from app.models.knowledge import KnowledgeChunk
 from app.models.landmark import Landmark
 from app.models.news import News
@@ -12,4 +13,5 @@ __all__ = [
     "WeatherHistory",
     "Landmark",
     "KnowledgeChunk",
+    "CleanTask",
 ]

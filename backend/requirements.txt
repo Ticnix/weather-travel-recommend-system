@@ -3,13 +3,11 @@ fastapi>=0.115.0
 uvicorn[standard]>=0.31.0
 pydantic-settings>=2.6.0
 python-dotenv
+python-multipart>=0.0.9
 sse-starlette
 pyjwt
 asyncpg>=0.30.0
-langchain>=0.3.0
-langgraph>=0.2.0
-langchain-openai>=0.2.0
-openai>=1.50.0
+pandas>=2.0.0
 celery>=5.4.0
 redis>=5.2.0
 sqlalchemy[asyncio]>=2.0.0

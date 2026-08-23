@@ -38,6 +38,10 @@ class Settings(BaseSettings):
     RAIN_ALERT_MM: float = 10.0  # 24h 降水 ≥10mm 提示
     WIND_ALERT_KMH: float = 40.0  # 风速 ≥40km/h 提示
 
+    # CSV 清洗模块
+    UPLOAD_DIR: str = "uploads"  # 原始 CSV 存放目录（相对 backend 工作目录）
+    CLEANED_DIR: str = "cleaned"  # 清洗结果 CSV 存放目录
+
 
 @lru_cache
 def get_settings() -> Settings:
