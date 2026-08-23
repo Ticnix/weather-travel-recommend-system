@@ -4,9 +4,9 @@ from fastapi import FastAPI
 
 from app.core.exceptions import register_exception_handlers
 from app.core.response import success
-from app.routers import feedback, news, users
+from app.routers import feedback, news, users, weather
 
-app = FastAPI(title="气象出行推荐后端API", version="0.3.0")
+app = FastAPI(title="气象出行推荐后端API", version="0.4.0")
 
 # 注册全局异常处理器
 register_exception_handlers(app)
@@ -15,6 +15,7 @@ register_exception_handlers(app)
 app.include_router(users.router)
 app.include_router(news.router)
 app.include_router(feedback.router)
+app.include_router(weather.router)
 
 
 @app.get("/", tags=["系统"])

@@ -4,6 +4,11 @@ __pycache__/
 venv/
 .env
 *.log
+# celery 运行期产生的调度状态文件
+celerybeat-schedule
+celerybeat-schedule-shm
+celerybeat-schedule-wal
+.pytest_cache/
 
 # frontend
 node_modules/
