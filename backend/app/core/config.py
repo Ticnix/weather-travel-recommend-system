@@ -17,11 +17,15 @@ class Settings(BaseSettings):
     # Redis
     REDIS_URL: str = "redis://127.0.0.1:6379/0"
 
-    # DeepSeek
+    # DeepSeek（对话/生成）
     DEEPSEEK_API_KEY: str = ""
     DEEPSEEK_BASE_URL: str = "https://api.deepseek.com"
     DEEPSEEK_LLM_MODEL: str = "deepseek-chat"
-    DEEPSEEK_EMBED_MODEL: str = "deepseek-embed-v2"
+
+    # 智谱 AI（Embedding）
+    ZHIPU_API_KEY: str = ""
+    ZHIPU_EMBED_BASE_URL: str = "https://open.bigmodel.cn/api/paas/v4"
+    ZHIPU_EMBED_MODEL: str = "embedding-3"
 
     # JWT
     JWT_SECRET: str = "change-me"
@@ -41,6 +45,15 @@ class Settings(BaseSettings):
     # CSV 清洗模块
     UPLOAD_DIR: str = "uploads"  # 原始 CSV 存放目录（相对 backend 工作目录）
     CLEANED_DIR: str = "cleaned"  # 清洗结果 CSV 存放目录
+
+    # RAG 知识库（Day6）
+    KNOWLEDGE_DIR: str = "knowledge_base"  # 知识库文档目录（相对 backend 工作目录）
+    EMBED_CHUNK_SIZE: int = 300  # 每个文本块的目标字符数
+    EMBED_CHUNK_OVERLAP: int = 50  # 相邻块重叠字符数
+    EMBED_BATCH_SIZE: int = 16  # 单次 embedding 批量大小
+    EMBED_TIMEOUT: float = 30.0  # embedding 请求超时（秒）
+    EMBED_DIM: int = 1024  # 向量维度（与智谱 embedding-3 dimensions=1024 对齐，匹配 Vector(1024)）
+    EMBED_TOP_K: int = 5  # 检索返回的 TopK
 
 
 @lru_cache

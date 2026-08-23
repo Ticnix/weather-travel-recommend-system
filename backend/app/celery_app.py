@@ -15,7 +15,7 @@ celery_app = Celery(
     "weather_travel",
     broker=settings.REDIS_URL,
     backend=settings.REDIS_URL,
-    include=["app.tasks.weather_tasks", "app.tasks.clean_tasks"],
+    include=["app.tasks.weather_tasks", "app.tasks.clean_tasks", "app.tasks.rag_tasks"],
 )
 
 celery_app.conf.update(

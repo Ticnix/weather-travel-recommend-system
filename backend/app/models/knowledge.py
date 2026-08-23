@@ -1,5 +1,5 @@
 ﻿from pgvector.sqlalchemy import Vector
-from sqlalchemy import Integer, String, Text
+from sqlalchemy import Integer, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -9,10 +9,14 @@ from app.db.base import Base, TimestampMixin
 class KnowledgeChunk(Base, TimestampMixin):
     """知识库向量表（RAG 检索）。
 
-    关键约束：embedding 维度固定为 1024，模型使用 deepseek-embed-v2。
+    关键约束：embedding 维度固定为 1024，模型使用智谱 embedding-3（dimensions=1024）。
+    (source, chunk_index) 唯一，用于重复建索引时的 upsert 去重。
     """
 
     __tablename__ = "knowledge_chunks"
+    __table_args__ = (
+        UniqueConstraint("source", "chunk_index", name="uq_knowledge_source_chunk"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     title: Mapped[str] = mapped_column(String(255), nullable=False)
