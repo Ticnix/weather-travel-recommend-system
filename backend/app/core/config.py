@@ -17,10 +17,38 @@ class Settings(BaseSettings):
     # Redis
     REDIS_URL: str = "redis://127.0.0.1:6379/0"
 
+    # ===== 多模型提供商配置（对话/生成）=====
+    # 当前启用的对话模型提供商：deepseek / qwen / zhipu / openai / moonshot / ollama
+    # 仅收录「OpenAI 兼容格式」的模型，避免引入不兼容适配器（如 Anthropic Claude）
+    LLM_PROVIDER: str = "deepseek"
+
     # DeepSeek（对话/生成）
     DEEPSEEK_API_KEY: str = ""
     DEEPSEEK_BASE_URL: str = "https://api.deepseek.com"
     DEEPSEEK_LLM_MODEL: str = "deepseek-chat"
+
+    # 通义千问 Qwen（OpenAI 兼容，DashScope）
+    QWEN_API_KEY: str = ""
+    QWEN_BASE_URL: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    QWEN_LLM_MODEL: str = "qwen-max"
+
+    # 智谱 GLM（OpenAI 兼容，与 Embedding 同一 Key）
+    ZHIPU_LLM_MODEL: str = "glm-4-plus"
+
+    # OpenAI（原生 OpenAI 兼容）
+    OPENAI_API_KEY: str = ""
+    OPENAI_BASE_URL: str = "https://api.openai.com/v1"
+    OPENAI_LLM_MODEL: str = "gpt-4o-mini"
+
+    # Moonshot Kimi（OpenAI 兼容）
+    MOONSHOT_API_KEY: str = ""
+    MOONSHOT_BASE_URL: str = "https://api.moonshot.cn/v1"
+    MOONSHOT_LLM_MODEL: str = "moonshot-v1-8k"
+
+    # Ollama 本地模型（OpenAI 兼容）
+    OLLAMA_API_KEY: str = "ollama"  # 本地模型无需真实 Key，占位即可
+    OLLAMA_BASE_URL: str = "http://127.0.0.1:11434/v1"
+    OLLAMA_LLM_MODEL: str = "qwen2.5:7b"
 
     # 智谱 AI（Embedding）
     ZHIPU_API_KEY: str = ""

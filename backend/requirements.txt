@@ -14,3 +14,6 @@ sqlalchemy[asyncio]>=2.0.0
 pgvector>=0.3.0
 geoalchemy2>=0.15.0
 alembic>=1.13.0
+langchain-openai>=0.3.0
+langgraph>=0.2.60
+langchain-core>=0.3.0
