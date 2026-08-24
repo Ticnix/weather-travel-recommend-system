@@ -1,6 +1,10 @@
 ﻿from functools import lru_cache
+from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# backend 根目录（config.py 位于 backend/app/core/ 下，向上两级）
+BACKEND_DIR: Path = Path(__file__).resolve().parent.parent.parent
 
 
 class Settings(BaseSettings):
@@ -26,6 +30,21 @@ class Settings(BaseSettings):
     DEEPSEEK_API_KEY: str = ""
     DEEPSEEK_BASE_URL: str = "https://api.deepseek.com"
     DEEPSEEK_LLM_MODEL: str = "deepseek-chat"
+
+    # ===== 气象数据源 =====
+    # 默认数据源：qweather（和风天气，国内本地化）/ open_meteo（兜底免费源）
+    WEATHER_PROVIDER: str = "open_meteo"
+    # 和风天气（QWeather）— 中国本地化、有官方预警
+    QWEATHER_API_KEY: str = ""
+    QWEATHER_BASE_URL: str = "https://devapi.qweather.com/v7"
+    QWEATHER_DEFAULT_LOCATION: str = "101280101"  # 广州 LocationID
+
+    # ===== MCP 配置 =====
+    # 传输方式：stdio（本地开发，Agent 直接拉起 MCP Server 子进程）
+    #          streamable_http（生产/上线，连接独立部署的 MCP Server）
+    MCP_TRANSPORT: str = "stdio"
+    # streamable_http 模式下 MCP Server 地址
+    MCP_SERVER_URL: str = "http://127.0.0.1:9000/mcp"
 
     # 通义千问 Qwen（OpenAI 兼容，DashScope）
     QWEN_API_KEY: str = ""
