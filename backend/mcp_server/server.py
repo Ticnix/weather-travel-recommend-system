@@ -68,6 +68,17 @@ async def search_news(keyword: str, category: str = "", limit: int = 5) -> str:
     return await tools.search_news(keyword, category or None, limit)
 
 
+@mcp.tool()
+async def search_knowledge(query: str, top_k: int = 5) -> str:
+    """从知识库（RAG 向量检索）语义检索相关内容，覆盖广州气候/美食/交通/景点/穿搭/天气出行规划等。
+
+    Args:
+        query: 用户问题的自然语言描述，如"广州塔怎么去"、"下雨天穿什么"。
+        top_k: 返回条数，1~10，默认 5。
+    """
+    return await tools.search_knowledge(query, top_k)
+
+
 def main() -> None:
     """命令行入口：解析 --transport 选择运行模式。"""
     parser = argparse.ArgumentParser(description="MCP 天气出行工具服务")

@@ -1,23 +1,26 @@
-"""LangGraph Agent：Day 8 意图识别 + Day 9 MCP 工具调用。
+"""LangGraph Agent：Day 8 意图识别 + Day 9 MCP 工具 + Day 10 RAG 与降级。
 
 图结构（ReAct 式工具循环）：
     START -> classify_intent（意图识别）
                 |
                 v
-            agent_node（LLM 决策：调用工具 or 直接回答）
+            agent_node（LLM 决策：调用工具 / 反问 / 直接回答）
                 |
           +-----+-----+
-          | 有 tool_call | 无 tool_call
+          | 有 tool_call | 无 tool_call（含反问/直答）
           v             v
        tools（执行 MCP 工具）  END
           |
           +-- 回到 agent_node（带工具结果继续推理）
 
 设计要点：
-- 工具来自 MCP Server（app/services/mcp_client.py 动态加载），与 Agent 解耦
-- classify_intent 先用 LLM 判断意图，weather/travel/outfit 类才绑定工具，
-  other（闲聊）不绑定工具，直接对话，节省 token 与延迟
-- 工具调用失败由 handle_tool_errors 兜底，不会中断整个流程
+- 工具来自 MCP Server（app/services/mcp_client.py 动态加载），与 Agent 解耦；
+  含天气 / 预报 / 资讯 / 知识库（RAG）四类工具
+- classify_intent 判断意图，weather/travel/outfit/knowledge 类才绑定工具，
+  other（闲聊）不绑定，节省 token 与延迟
+- 完善 ReAct 决策：信息不足时反问用户、有数据时直接回答、需查询时调用工具
+- 全链路降级：意图识别失败用关键词兜底，LLM 调用失败走 handle_error，
+  工具失败由 handle_tool_errors 兜底，保证接口永不 500
 """
 
 from __future__ import annotations
@@ -25,7 +28,7 @@ from __future__ import annotations
 import logging
 from typing import Annotated, TypedDict
 
-from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.messages import HumanMessage
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode
@@ -39,14 +42,21 @@ logger = logging.getLogger(__name__)
 INTENT_SYSTEM_PROMPT = (
     "你是天气出行助手的意图识别模块。请判断用户输入属于哪一类，"
     "只输出以下标签之一：weather（天气查询）、outfit（穿搭推荐）、"
-    "travel（出行/行程规划）、other（其他/闲聊）。不要输出任何解释。"
+    "travel（出行/行程规划）、knowledge（知识问答，如景点/美食/交通攻略）、"
+    "other（其他/闲聊）。不要输出任何解释。"
 )
 
-# 生成回答提示词（含工具结果时使用）
+# 生成回答提示词（含工具结果时使用）—— 含 ReAct 决策规则
 GENERATE_SYSTEM_PROMPT = (
-    "你是「广州天气旅行助手」，一个专业的本地出行服务 AI。"
-    "请基于提供的真实数据（工具返回结果）回答用户问题，给出实用建议。"
-    "禁止编造数据，若数据不足则如实说明。用中文简洁友好回答，控制在 200 字以内。"
+    "你是「广州天气旅行助手」，一个专业的本地出行服务 AI。\n"
+    "请遵循以下决策规则：\n"
+    "1. 若用户问题缺少必要信息（如没说明城市、日期、出行方式），"
+    "请礼貌地反问用户补充，而不是盲目调用工具或猜测。\n"
+    "2. 若需要实时数据（天气/预报/资讯/背景知识），调用对应工具获取真实数据，"
+    "再基于工具返回结果作答。\n"
+    "3. 若问题可直接回答，则直接简洁作答。\n"
+    "禁止编造数据，工具未返回的数据一律不得臆造；数据不足时如实说明。\n"
+    "用中文简洁友好回答，控制在 200 字以内。"
 )
 
 # 纯闲聊回答提示词（不调用工具）
@@ -56,7 +66,15 @@ CHAT_SYSTEM_PROMPT = (
 )
 
 # 需要绑定工具的意图（这些意图下 LLM 可决定调用 MCP 工具）
-TOOL_INTENTS = {"weather", "travel", "outfit"}
+TOOL_INTENTS = {"weather", "travel", "outfit", "knowledge"}
+
+# 关键词兜底规则（意图识别 LLM 失败时使用）
+_INTENT_KEYWORDS: dict[str, tuple[str, ...]] = {
+    "weather": ("天气", "气温", "温度", "下雨", "晴天", "台风", "降水", "湿度", "预报"),
+    "outfit": ("穿", "穿搭", "衣服", "着装", "打扮"),
+    "travel": ("去", "行程", "路线", "出行", "旅游", "交通", "地铁", "高铁", "航班", "怎么走"),
+    "knowledge": ("景点", "美食", "好吃", "好玩", "攻略", "推荐", "酒店", "住宿", "历史", "文化"),
+}
 
 
 class AgentState(TypedDict):
@@ -68,49 +86,61 @@ class AgentState(TypedDict):
     error: str
 
 
+def _keyword_intent(text: str) -> str:
+    """关键词规则兜底：LLM 意图识别失败时使用。"""
+    for label, keywords in _INTENT_KEYWORDS.items():
+        for kw in keywords:
+            if kw in text:
+                return label
+    return "other"
+
+
 async def _classify_intent(state: AgentState) -> dict:
-    """意图识别节点：用 LLM 判断用户意图，写入 state.intent。"""
-    llm = get_llm()
+    """意图识别节点：优先 LLM，失败降级到关键词规则。"""
     user_text = state["messages"][-1].content
-    resp = await llm.ainvoke(
-        [
-            ("system", INTENT_SYSTEM_PROMPT),
-            ("human", user_text),
-        ]
-    )
-    intent = (resp.content if isinstance(resp.content, str) else str(resp.content)).strip()
-    for label in ("weather", "outfit", "travel", "other"):
-        if label in intent.lower():
-            intent = label
-            break
-    else:
-        intent = "other"
+    llm = get_llm()
+    try:
+        resp = await llm.ainvoke(
+            [
+                ("system", INTENT_SYSTEM_PROMPT),
+                ("human", user_text),
+            ]
+        )
+        intent = (resp.content if isinstance(resp.content, str) else str(resp.content)).strip()
+        for label in ("weather", "outfit", "travel", "knowledge", "other"):
+            if label in intent.lower():
+                intent = label
+                break
+        else:
+            intent = "other"
+    except Exception as exc:  # noqa: BLE001 LLM 失败降级到关键词
+        logger.warning("意图识别 LLM 调用失败，降级到关键词规则: %s", exc)
+        intent = _keyword_intent(user_text)
     logger.info("识别意图: %s（用户：%s）", intent, user_text)
     return {"intent": intent}
 
 
 async def _agent_node(state: AgentState) -> dict:
-    """LLM 决策节点：绑定工具（按意图），让模型决定调用工具还是直接回答。"""
+    """LLM 决策节点：绑定工具（按意图），让模型决定调用工具/反问/直答。"""
     llm = get_llm()
     intent = state.get("intent", "other")
 
     if intent in TOOL_INTENTS:
-        # 绑定 MCP 工具，LLM 可自主决定调用哪些工具
         tools = await get_mcp_tools()
         llm_with_tools = llm.bind_tools(tools)
         system = GENERATE_SYSTEM_PROMPT
     else:
-        # 闲聊意图：不绑定工具，直接对话
         llm_with_tools = llm
         system = CHAT_SYSTEM_PROMPT
 
     messages = state["messages"]
-    resp = await llm_with_tools.ainvoke(
-        [("system", system), *messages]
-    )
+    try:
+        resp = await llm_with_tools.ainvoke([("system", system), *messages])
+    except Exception as exc:  # noqa: BLE001 LLM 失败交给 handle_error
+        logger.exception("LLM 生成节点调用失败: %s", exc)
+        return {"error": str(exc)}
 
     result: dict = {"messages": [resp]}
-    # 若无工具调用，说明模型已给出最终答案
     if not getattr(resp, "tool_calls", None):
         content = resp.content if isinstance(resp.content, str) else str(resp.content)
         result["answer"] = content
@@ -126,10 +156,10 @@ def _should_continue(state: AgentState) -> str:
 
 
 async def _handle_error(state: AgentState) -> dict:
-    """异常兜底节点：工具/LLM 调用失败时返回友好提示。"""
-    logger.exception("Agent 执行失败: %s", state.get("error"))
+    """异常兜底节点：LLM 调用失败时返回友好提示。"""
+    logger.error("Agent 执行失败: %s", state.get("error"))
     return {
-        "answer": "抱歉，服务暂时不可用，请稍后重试。",
+        "answer": "抱歉，AI 服务暂时不可用，请稍后重试。",
         "error": state.get("error", "unknown"),
     }
 

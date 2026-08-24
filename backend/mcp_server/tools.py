@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import AsyncSessionLocal
 from app.models.news import News
+from app.services import rag_service
 from app.services.city_dict import all_supported_cities, lookup_city
 from app.services.weather_service import fetch_weather, weather_to_text
 
@@ -97,4 +98,32 @@ async def search_news(keyword: str, category: str | None = None, limit: int = 5)
         # 截取前 120 字作为摘要
         summary = (n.content or "")[:120].replace("\n", " ")
         lines.append(f"- [{n.category}] {n.title}：{summary}...")
+    return "\n".join(lines)
+
+
+async def search_knowledge(query: str, top_k: int = 5) -> str:
+    """从知识库（RAG）语义检索相关内容。
+
+    知识库覆盖：广州气候、美食、交通、景点、住宿、穿搭、天气出行规划等。
+    适合回答"广州哪里好玩""下雨天穿什么""广州美食推荐"等需要背景知识的问题。
+
+    参数 query 是用户问题的自然语言描述，如"广州塔怎么去"。
+    """
+    if not query or not query.strip():
+        return "检索问题不能为空，请描述你想了解的内容。"
+
+    try:
+        items = await rag_service.search(query.strip(), top_k=max(1, min(10, int(top_k))))
+    except Exception as exc:  # noqa: BLE001 检索失败降级
+        return f"知识库检索失败：{exc}"
+
+    if not items:
+        return "未找到相关知识。可尝试换一种说法，或询问天气、出行、穿搭类问题。"
+
+    lines = [f"知识库检索到 {len(items)} 条相关内容："]
+    for it in items:
+        content = (it.get("content") or "")[:200].replace("\n", " ")
+        lines.append(
+            f"- [{it.get('title', '')}]（相似度 {it.get('similarity', 0):.2f}）{content}..."
+        )
     return "\n".join(lines)
