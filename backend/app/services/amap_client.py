@@ -96,7 +96,7 @@ async def plan_route(
     destination: str,
     city: str | None = None,
 ) -> dict[str, Any]:
-    """路线规划：返回多套方案。
+    """路线规划：返回多套方案（真实高德：驾车 + 公交；兜底：多交通方式估算）。
 
     返回结构：
     {
@@ -109,14 +109,84 @@ async def plan_route(
         ]
     }
     """
-    # 优先走真实高德 API
+    # 优先走真实高德 API（驾车 + 公交，按耗时合并排序）
     if settings.AMAP_API_KEY:
-        result = await _plan_driving_amap(origin, destination, city)
-        if result and result.get("routes"):
-            return result
+        driving = await _plan_driving_amap(origin, destination, city)
+        transit = await _plan_transit_amap(origin, destination, city)
+        routes = []
+        if driving and driving.get("routes"):
+            routes.extend(driving["routes"])
+        if transit and transit.get("routes"):
+            routes.extend(transit["routes"])
+        if routes:
+            routes.sort(key=lambda r: r["duration_min"])
+            return {
+                "origin": origin,
+                "destination": destination,
+                "mode": "driving",
+                "routes": routes,
+            }
 
     # 兜底：基于坐标的直线距离估算（多交通方式）
     return await _plan_fallback(origin, destination, city)
+
+
+async def _plan_transit_amap(origin: str, destination: str, city: str | None) -> dict[str, Any] | None:
+    """高德公交路线规划 API（含地铁）。"""
+    o = await geocode(origin, city)
+    d = await geocode(destination, city)
+    if not o or not d:
+        return None
+
+    params = {
+        "key": settings.AMAP_API_KEY,
+        "origin": f"{o['lng']},{o['lat']}",
+        "destination": f"{d['lng']},{d['lat']}",
+        "city": city or settings.AMAP_DEFAULT_CITY,
+        "extensions": "base",
+    }
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(f"{settings.AMAP_BASE_URL}/direction/transit/integrated", params=params)
+            resp.raise_for_status()
+            data = resp.json()
+        if data.get("status") != "1" or not data.get("route", {}).get("transits"):
+            return None
+
+        routes = []
+        for t in data["route"]["transits"][:3]:
+            distance_km = round(float(t.get("distance", 0)) / 1000, 1)
+            duration_min = round(float(t.get("duration", 0)) / 60)
+            cost = float(t.get("cost", 0))
+            # 公交费用通常很低，取实际
+            cost = round(cost, 1) if cost else round(max(2, distance_km * 0.3), 1)
+            # 提取换乘信息
+            segments = t.get("segments", [])
+            transit_lines = []
+            for seg in segments:
+                bus = seg.get("bus", {})
+                if bus and bus.get("buslines"):
+                    for line in bus["buslines"][:1]:
+                        transit_lines.append(f"{line.get('type', '公交')}{line.get('name', '')}")
+            detail = " → ".join(transit_lines[:3]) or "地铁/公交可达"
+            routes.append(
+                {
+                    "mode": "地铁/公交",
+                    "duration_min": duration_min,
+                    "distance_km": distance_km,
+                    "cost": cost,
+                    "detail": detail,
+                }
+            )
+        return {
+            "origin": origin,
+            "destination": destination,
+            "mode": "transit",
+            "routes": routes,
+        }
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("高德公交路线规划失败: %s", exc)
+        return None
 
 
 async def _plan_driving_amap(origin: str, destination: str, city: str | None) -> dict[str, Any] | None:
