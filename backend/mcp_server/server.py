@@ -106,6 +106,20 @@ async def plan_travel_route(origin: str, destination: str, city: str = "广州")
     return await tools.plan_travel_route(origin, destination, city)
 
 
+@mcp.tool()
+async def recommend_outfit(city: str = "广州", scene: str = "", preference: str = "") -> str:
+    """穿搭推荐：结合天气（温度/降水/风）+ 活动场景 + 用户偏好，生成贴合场景的穿搭建议。
+
+    适用"明天爬山穿什么""下雨天逛街穿什么""我怕冷怎么穿"等。
+
+    Args:
+        city: 城市，默认"广州"。
+        scene: 活动场景（爬山/逛街/夜游/商务/通勤/露营/骑行/观景/亲子/摄影），可留空。
+        preference: 用户偏好（怕冷/怕热/正式/运动/休闲/简约/时尚），可留空。
+    """
+    return await tools.recommend_outfit(city, scene, preference)
+
+
 def main() -> None:
     """命令行入口：解析 --transport 选择运行模式。"""
     parser = argparse.ArgumentParser(description="MCP 天气出行工具服务")

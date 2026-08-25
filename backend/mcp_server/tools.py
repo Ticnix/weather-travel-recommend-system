@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import AsyncSessionLocal
 from app.models.news import News
-from app.services import rag_service, travel_skill, web_search_service
+from app.services import outfit_skill, rag_service, travel_skill, web_search_service
 from app.services.city_dict import all_supported_cities, lookup_city
 from app.services.weather_service import fetch_weather, weather_to_text
 
@@ -144,3 +144,14 @@ async def plan_travel_route(origin: str, destination: str, city: str = "广州")
     适用"从广州南站到广州塔怎么走""去白云山坐地铁还是打车"等。
     """
     return await travel_skill.plan_travel(origin, destination, city)
+
+
+async def recommend_outfit(city: str = "广州", scene: str = "", preference: str = "") -> str:
+    """穿搭推荐：结合天气（温度/降水/风）+ 活动场景 + 用户偏好，生成贴合场景的穿搭建议。
+
+    适用"明天爬山穿什么""下雨天逛街穿什么""我怕冷，明天怎么穿"等。
+
+    参数 scene 可选：爬山/逛街/夜游/商务/通勤/露营/骑行/观景/亲子/摄影；
+    参数 preference 可选：怕冷/怕热/正式/运动/休闲/简约/时尚。
+    """
+    return await outfit_skill.recommend_outfit(city, scene or None, preference or None)
