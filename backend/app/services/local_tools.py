@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from langchain_core.tools import tool
 
-from app.services import user_knowledge_service
+from app.services import itinerary_service, user_knowledge_service
 from app.services.user_context import get_current_user_id
 
 
@@ -48,6 +48,27 @@ async def search_my_plans(query: str, top_k: int = 5) -> str:
     return "\n".join(lines)
 
 
+@tool
+async def check_itinerary_weather(query: str) -> str:
+    """查询当前登录用户某天的行程安排，并结合当天天气给出出行提醒与推荐。
+
+    适用场景：用户问"明天有什么安排""后天要注意什么""我的行程当天天气如何"等。
+    会自动解析用户问题中的日期（今天/明天/后天/具体日期），取该日行程，
+    再查当天真实天气，返回行程+天气的组合信息供生成提醒。
+
+    Args:
+        query: 用户关于行程/日期的提问，如"明天有什么安排，要注意什么"。
+    """
+    user_id = get_current_user_id()
+    if user_id is None:
+        return "当前未登录，无法查询行程。请先登录。"
+
+    try:
+        return await itinerary_service.itinerary_weather_reminder(user_id, query)
+    except Exception as exc:  # noqa: BLE001
+        return f"行程查询失败：{exc}"
+
+
 def get_local_tools() -> list:
     """返回所有本地工具（进程内、带用户态）。"""
-    return [search_my_plans]
+    return [search_my_plans, check_itinerary_weather]

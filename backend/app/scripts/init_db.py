@@ -20,6 +20,7 @@ from app.db.base import Base
 from app.db.session import engine
 from app.models import (  # noqa: F401 确保模型注册
     Feedback,
+    Itinerary,
     KnowledgeChunk,
     Landmark,
     News,
