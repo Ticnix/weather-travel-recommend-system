@@ -79,6 +79,20 @@ async def search_knowledge(query: str, top_k: int = 5) -> str:
     return await tools.search_knowledge(query, top_k)
 
 
+@mcp.tool()
+async def web_search(query: str, max_results: int = 5) -> str:
+    """联网搜索实时信息（Tavily 优先、DuckDuckGo 兜底）。
+
+    用于回答知识库和天气 API 都覆盖不到的实时/时效性问题，
+    如"广州塔今天开放吗""最近广州有什么活动""某景区最新门票"。
+
+    Args:
+        query: 搜索关键词或问题，如"广州塔 开放时间 2026"。
+        max_results: 返回条数，1~10，默认 5。
+    """
+    return await tools.web_search(query, max_results)
+
+
 def main() -> None:
     """命令行入口：解析 --transport 选择运行模式。"""
     parser = argparse.ArgumentParser(description="MCP 天气出行工具服务")

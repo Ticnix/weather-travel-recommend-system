@@ -34,7 +34,9 @@ from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode
 
 from app.services.llm_client import get_llm
+from app.services.local_tools import get_local_tools
 from app.services.mcp_client import get_mcp_tools
+from app.services.user_context import reset_current_user_id, set_current_user_id
 
 logger = logging.getLogger(__name__)
 
@@ -52,9 +54,13 @@ GENERATE_SYSTEM_PROMPT = (
     "请遵循以下决策规则：\n"
     "1. 若用户问题缺少必要信息（如没说明城市、日期、出行方式），"
     "请礼貌地反问用户补充，而不是盲目调用工具或猜测。\n"
-    "2. 若需要实时数据（天气/预报/资讯/背景知识），调用对应工具获取真实数据，"
-    "再基于工具返回结果作答。\n"
-    "3. 若问题可直接回答，则直接简洁作答。\n"
+    "2. 若需要实时数据，优先调用对应工具：天气/预报用 get_weather/get_forecast，"
+    "本地攻略知识用 search_knowledge，资讯用 search_news。\n"
+    "3. 若问题涉及实时性/时效性信息且上述工具覆盖不到（如景区当天开放情况、"
+    "最新活动、门票价格、时事新闻），则调用 web_search 联网搜索。\n"
+    "4. 若问题涉及用户自己的内容（如\"我的行程计划\"\"我上次收藏的\"等个性化信息），"
+    "则调用 search_my_plans 检索该用户的私有知识库。\n"
+    "5. 若问题可直接回答，则直接简洁作答。\n"
     "禁止编造数据，工具未返回的数据一律不得臆造；数据不足时如实说明。\n"
     "用中文简洁友好回答，控制在 200 字以内。"
 )
@@ -120,13 +126,20 @@ async def _classify_intent(state: AgentState) -> dict:
     return {"intent": intent}
 
 
+async def _get_all_tools() -> list:
+    """合并 MCP 工具（无状态公共工具）+ 本地工具（有用户态私有工具）。"""
+    mcp_tools = await get_mcp_tools()
+    local_tools = get_local_tools()
+    return [*mcp_tools, *local_tools]
+
+
 async def _agent_node(state: AgentState) -> dict:
     """LLM 决策节点：绑定工具（按意图），让模型决定调用工具/反问/直答。"""
     llm = get_llm()
     intent = state.get("intent", "other")
 
     if intent in TOOL_INTENTS:
-        tools = await get_mcp_tools()
+        tools = await _get_all_tools()
         llm_with_tools = llm.bind_tools(tools)
         system = GENERATE_SYSTEM_PROMPT
     else:
@@ -170,8 +183,8 @@ def _should_error(state: AgentState) -> str:
 
 
 async def _build_graph():
-    """构建 LangGraph 状态机（含 MCP 工具节点）。"""
-    tools = await get_mcp_tools()  # 预加载工具，供 ToolNode 使用
+    """构建 LangGraph 状态机（含 MCP 工具 + 本地工具节点）。"""
+    tools = await _get_all_tools()  # 预加载全部工具，供 ToolNode 使用
     graph = StateGraph(AgentState)
 
     graph.add_node("classify_intent", _classify_intent)
@@ -208,14 +221,19 @@ async def _get_agent():
     return _agent_instance
 
 
-async def chat(user_input: str) -> dict:
-    """对外暴露的单轮对话入口。返回 {intent, answer}。"""
+async def chat(user_input: str, user_id: int | None = None) -> dict:
+    """对外暴露的单轮对话入口。返回 {intent, answer}。
+
+    参数 user_id：当前登录用户 ID（可选）。设置到 contextvar，供
+    search_my_plans 等「用户私有」工具读取，实现多租户数据隔离。
+    """
     initial: AgentState = {
         "messages": [HumanMessage(content=user_input)],
         "intent": "",
         "answer": "",
         "error": "",
     }
+    token = set_current_user_id(user_id)
     try:
         ag = await _get_agent()
         result = await ag.ainvoke(initial)
@@ -223,3 +241,5 @@ async def chat(user_input: str) -> dict:
     except Exception as exc:  # noqa: BLE001 统一兜底，避免接口 500
         logger.exception("对话异常: %s", exc)
         return {"intent": "other", "answer": "抱歉，AI 服务暂时不可用，请稍后重试。"}
+    finally:
+        reset_current_user_id(token)

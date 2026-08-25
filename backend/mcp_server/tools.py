@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import AsyncSessionLocal
 from app.models.news import News
-from app.services import rag_service
+from app.services import rag_service, web_search_service
 from app.services.city_dict import all_supported_cities, lookup_city
 from app.services.weather_service import fetch_weather, weather_to_text
 
@@ -127,3 +127,12 @@ async def search_knowledge(query: str, top_k: int = 5) -> str:
             f"- [{it.get('title', '')}]（相似度 {it.get('similarity', 0):.2f}）{content}..."
         )
     return "\n".join(lines)
+
+
+async def web_search(query: str, max_results: int = 5) -> str:
+    """联网搜索实时信息（Tavily 优先，DuckDuckGo 兜底）。
+
+    用于回答知识库和天气 API 都覆盖不到的实时问题，如"广州塔今天开放吗"、
+    "最近广州有什么活动""某景区最新门票价格"等。
+    """
+    return await web_search_service.search(query, max_results)

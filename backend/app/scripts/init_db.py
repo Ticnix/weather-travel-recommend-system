@@ -24,6 +24,7 @@ from app.models import (  # noqa: F401 确保模型注册
     Landmark,
     News,
     User,
+    UserKnowledge,
     WeatherHistory,
 )
 

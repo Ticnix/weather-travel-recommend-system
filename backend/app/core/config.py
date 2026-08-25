@@ -46,6 +46,12 @@ class Settings(BaseSettings):
     # streamable_http 模式下 MCP Server 地址
     MCP_SERVER_URL: str = "http://127.0.0.1:9000/mcp"
 
+    # ===== 联网搜索配置 =====
+    # Tavily（AI 场景搜索引擎，优先）：免费注册 https://tavily.com 获取 Key
+    TAVILY_API_KEY: str = ""
+    # 是否启用 DuckDuckGo 兜底（Tavily 无 Key 或失败时自动降级）
+    WEB_SEARCH_FALLBACK_DDG: bool = True
+
     # 通义千问 Qwen（OpenAI 兼容，DashScope）
     QWEN_API_KEY: str = ""
     QWEN_BASE_URL: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
