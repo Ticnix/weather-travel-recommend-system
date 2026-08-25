@@ -13,7 +13,9 @@ from __future__ import annotations
 
 from langchain_core.tools import tool
 
-from app.services import itinerary_service, user_knowledge_service
+from skills.itinerary_reminder.scripts import reminder
+
+from app.services import user_knowledge_service
 from app.services.user_context import get_current_user_id
 
 
@@ -64,7 +66,7 @@ async def check_itinerary_weather(query: str) -> str:
         return "当前未登录，无法查询行程。请先登录。"
 
     try:
-        return await itinerary_service.itinerary_weather_reminder(user_id, query)
+        return await reminder.run(user_id, query)
     except Exception as exc:  # noqa: BLE001
         return f"行程查询失败：{exc}"
 

@@ -14,9 +14,12 @@ from __future__ import annotations
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from skills.outfit_recommend.scripts import outfit_engine
+from skills.travel_planning.scripts import route_planner
+
 from app.db.session import AsyncSessionLocal
 from app.models.news import News
-from app.services import outfit_skill, rag_service, travel_skill, web_search_service
+from app.services import rag_service, web_search_service
 from app.services.city_dict import all_supported_cities, lookup_city
 from app.services.weather_service import fetch_weather, weather_to_text
 
@@ -143,7 +146,7 @@ async def plan_travel_route(origin: str, destination: str, city: str = "广州")
 
     适用"从广州南站到广州塔怎么走""去白云山坐地铁还是打车"等。
     """
-    return await travel_skill.plan_travel(origin, destination, city)
+    return await route_planner.run(origin, destination, city)
 
 
 async def recommend_outfit(city: str = "广州", scene: str = "", preference: str = "") -> str:
@@ -154,4 +157,4 @@ async def recommend_outfit(city: str = "广州", scene: str = "", preference: st
     参数 scene 可选：爬山/逛街/夜游/商务/通勤/露营/骑行/观景/亲子/摄影；
     参数 preference 可选：怕冷/怕热/正式/运动/休闲/简约/时尚。
     """
-    return await outfit_skill.recommend_outfit(city, scene or None, preference or None)
+    return await outfit_engine.run(city, scene or None, preference or None)
