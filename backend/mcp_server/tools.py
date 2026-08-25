@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import AsyncSessionLocal
 from app.models.news import News
-from app.services import rag_service, web_search_service
+from app.services import rag_service, travel_skill, web_search_service
 from app.services.city_dict import all_supported_cities, lookup_city
 from app.services.weather_service import fetch_weather, weather_to_text
 
@@ -136,3 +136,11 @@ async def web_search(query: str, max_results: int = 5) -> str:
     "最近广州有什么活动""某景区最新门票价格"等。
     """
     return await web_search_service.search(query, max_results)
+
+
+async def plan_travel_route(origin: str, destination: str, city: str = "广州") -> str:
+    """出行规划：从出发地到目的地，返回多套出行方案，融合时间/费用/天气三维评分并带天气提示。
+
+    适用"从广州南站到广州塔怎么走""去白云山坐地铁还是打车"等。
+    """
+    return await travel_skill.plan_travel(origin, destination, city)

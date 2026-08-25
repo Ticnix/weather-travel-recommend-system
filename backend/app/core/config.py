@@ -52,6 +52,13 @@ class Settings(BaseSettings):
     # 是否启用 DuckDuckGo 兜底（Tavily 无 Key 或失败时自动降级）
     WEB_SEARCH_FALLBACK_DDG: bool = True
 
+    # ===== 高德地图配置 =====
+    # 高德开放平台 Web 服务 Key（个人开发者免费申请 https://lbs.amap.com）
+    AMAP_API_KEY: str = ""
+    AMAP_BASE_URL: str = "https://restapi.amap.com/v3"
+    # 默认出发城市（地理编码时若地址不含城市，用此兜底）
+    AMAP_DEFAULT_CITY: str = "广州"
+
     # 通义千问 Qwen（OpenAI 兼容，DashScope）
     QWEN_API_KEY: str = ""
     QWEN_BASE_URL: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"

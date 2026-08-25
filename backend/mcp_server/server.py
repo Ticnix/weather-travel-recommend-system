@@ -93,6 +93,19 @@ async def web_search(query: str, max_results: int = 5) -> str:
     return await tools.web_search(query, max_results)
 
 
+@mcp.tool()
+async def plan_travel_route(origin: str, destination: str, city: str = "广州") -> str:
+    """出行规划：从出发地到目的地，返回多套出行方案（驾车/公交/步行/骑行等），
+    融合时间、费用、天气三个维度综合评分排序，并附带天气提示。
+
+    Args:
+        origin: 出发地，如"广州南站"。
+        destination: 目的地，如"广州塔"。
+        city: 所在城市，默认"广州"。
+    """
+    return await tools.plan_travel_route(origin, destination, city)
+
+
 def main() -> None:
     """命令行入口：解析 --transport 选择运行模式。"""
     parser = argparse.ArgumentParser(description="MCP 天气出行工具服务")
