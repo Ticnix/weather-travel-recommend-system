@@ -1,4 +1,5 @@
-﻿from app.models.clean_task import CleanTask
+﻿from app.models.chat_message import ChatMessage
+from app.models.clean_task import CleanTask
 from app.models.feedback import Feedback
 from app.models.itinerary import Itinerary
 from app.models.knowledge import KnowledgeChunk
@@ -18,4 +19,5 @@ __all__ = [
     "UserKnowledge",
     "Itinerary",
     "CleanTask",
+    "ChatMessage",
 ]

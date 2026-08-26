@@ -28,7 +28,7 @@ from __future__ import annotations
 import logging
 from typing import Annotated, TypedDict
 
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode
@@ -228,18 +228,43 @@ async def _get_agent():
     return _agent_instance
 
 
-async def chat(user_input: str, user_id: int | None = None) -> dict:
-    """对外暴露的单轮对话入口。返回 {intent, answer}。
+def _build_initial_state(user_input: str, history: list[dict] | None = None) -> AgentState:
+    """构造 Agent 初始状态。
 
-    参数 user_id：当前登录用户 ID（可选）。设置到 contextvar，供
-    search_my_plans 等「用户私有」工具读取，实现多租户数据隔离。
+    history 为历史消息列表（[{"role": "user"/"assistant", "content": ...}]），
+    按时间正序传入，用于多轮上下文。空/None 时为单轮。
     """
-    initial: AgentState = {
-        "messages": [HumanMessage(content=user_input)],
+    messages: list = []
+    for msg in history or []:
+        role = msg.get("role")
+        content = msg.get("content", "")
+        if role == "assistant":
+            messages.append(AIMessage(content=content))
+        elif role == "user":
+            messages.append(HumanMessage(content=content))
+    messages.append(HumanMessage(content=user_input))
+
+    return {
+        "messages": messages,
         "intent": "",
         "answer": "",
         "error": "",
     }
+
+
+async def chat(
+    user_input: str,
+    user_id: int | None = None,
+    history: list[dict] | None = None,
+) -> dict:
+    """对话入口（单轮/多轮）。返回 {intent, answer}。
+
+    参数：
+    - user_id：当前登录用户 ID（可选）。设置到 contextvar，供
+      search_my_plans 等「用户私有」工具读取，实现多租户数据隔离。
+    - history：历史消息列表，用于多轮上下文。
+    """
+    initial = _build_initial_state(user_input, history)
     token = set_current_user_id(user_id)
     try:
         ag = await _get_agent()
@@ -250,3 +275,43 @@ async def chat(user_input: str, user_id: int | None = None) -> dict:
         return {"intent": "other", "answer": "抱歉，AI 服务暂时不可用，请稍后重试。"}
     finally:
         reset_current_user_id(token)
+
+
+async def chat_stream(
+    user_input: str,
+    user_id: int | None = None,
+    history: list[dict] | None = None,
+):
+    """流式对话入口（SSE）。逐 token yield，最后 yield 最终意图。
+
+    用 LangGraph 的 astream(stream_mode="messages") 获取增量消息，
+    每个 AIMessageChunk 的 content 作为一段 token 推送。
+    """
+    initial = _build_initial_state(user_input, history)
+    token = set_current_user_id(user_id)
+    final_intent = "chat"
+    try:
+        ag = await _get_agent()
+        # 先跑一次意图识别（轻量，单次 LLM 调用），拿到 intent
+        intent_state = await _classify_intent(initial)
+        final_intent = intent_state.get("intent", "chat")
+        yield {"type": "intent", "intent": final_intent}
+        # 再流式生成：逐 token 推送，仅输出「agent 生成节点」的文本增量，
+        # 跳过 classify_intent 节点的输出（其内容是意图标签，不应作为答案推送）
+        async for chunk in ag.astream(initial, stream_mode="messages"):
+            msg_chunk = chunk[0] if isinstance(chunk, tuple) else chunk
+            meta = chunk[1] if isinstance(chunk, tuple) else {}
+            if meta.get("langgraph_node") != "agent":
+                continue
+            if isinstance(msg_chunk, AIMessageChunk):
+                piece = msg_chunk.content
+                if isinstance(piece, str) and piece:
+                    yield {"type": "token", "content": piece}
+    except Exception as exc:  # noqa: BLE001 统一兜底
+        logger.exception("流式对话异常: %s", exc)
+        yield {"type": "token", "content": "抱歉，AI 服务暂时不可用，请稍后重试。"}
+        final_intent = "other"
+    finally:
+        reset_current_user_id(token)
+
+    yield {"type": "done"}
