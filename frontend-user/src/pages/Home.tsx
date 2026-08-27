@@ -4,6 +4,7 @@ import {
   ThunderboltOutlined,
   CalendarOutlined,
   CompassOutlined,
+  GlobalOutlined,
 } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
 import WeatherHero from '../components/WeatherHero'
@@ -41,6 +42,13 @@ const QUICK_ACTIONS = [
     desc: '结合天气的出行提醒',
     color: '#fa8c16',
   },
+  {
+    key: 'weather3d',
+    icon: <GlobalOutlined style={{ fontSize: 28 }} />,
+    title: '3D 天气可视化',
+    desc: '沉浸式三维天气特效',
+    color: '#2f54eb',
+  },
 ]
 
 export default function Home() {
@@ -61,7 +69,11 @@ export default function Home() {
             <Card
               hoverable
               onClick={() =>
-                action.key === 'chat' ? navigate('/chat') : navigate(`/chat?topic=${action.key}`)
+                action.key === 'chat'
+                  ? navigate('/chat')
+                  : action.key === 'weather3d'
+                    ? navigate('/weather3d')
+                    : navigate(`/chat?topic=${action.key}`)
               }
               style={{ borderRadius: 16, height: '100%' }}
               styles={{ body: { padding: 20 } }}

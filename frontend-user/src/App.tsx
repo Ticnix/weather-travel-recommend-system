@@ -4,6 +4,7 @@ import { BrowserRouter, Route, Routes } from 'react-router-dom'
 import MainLayout from './layouts/MainLayout'
 import Home from './pages/Home'
 import Chat from './pages/Chat'
+import Weather3D from './pages/Weather3D'
 import Placeholder from './pages/Placeholder'
 
 function App() {
@@ -22,6 +23,7 @@ function App() {
           <Route element={<MainLayout />}>
             <Route path="/" element={<Home />} />
             <Route path="/chat" element={<Chat />} />
+            <Route path="/weather3d" element={<Weather3D />} />
             <Route
               path="/news"
               element={

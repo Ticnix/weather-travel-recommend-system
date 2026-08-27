@@ -6,6 +6,7 @@ import {
   CalendarOutlined,
   UserOutlined,
   CloudOutlined,
+  GlobalOutlined,
 } from '@ant-design/icons'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 
@@ -15,6 +16,7 @@ const { Title } = Typography
 // 导航项：预留后续功能入口（资讯、行程等 Day 18 接入）
 const NAV_ITEMS = [
   { key: '/', icon: <HomeOutlined />, label: '首页' },
+  { key: '/weather3d', icon: <GlobalOutlined />, label: '3D 天气' },
   { key: '/chat', icon: <MessageOutlined />, label: 'AI 助手' },
   { key: '/news', icon: <ReadOutlined />, label: '气象资讯' },
   { key: '/itinerary', icon: <CalendarOutlined />, label: '我的行程' },
