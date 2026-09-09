@@ -4,6 +4,7 @@ __pycache__/
 venv/
 .env
 *.log
+*.err
 # celery 运行期产生的调度状态文件
 celerybeat-schedule
 celerybeat-schedule-shm
