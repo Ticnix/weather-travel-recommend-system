@@ -50,13 +50,66 @@ def weather_score(weather_desc: str, temp_min: float | None, temp_max: float | N
 
 async def run(origin: str, destination: str, city: str | None = None) -> str:
     """出行规划主入口，返回结构化文本。"""
+    data = await plan_structured(origin, destination, city)
+    if data.get("error"):
+        return data["error"]
+    if data.get("hint"):
+        return data["hint"]
+
+    plan = data
+    scored = plan["routes"]
+    weather_desc = plan.get("weather", {}).get("desc", "")
+    temp_min = plan["weather"].get("temp_min")
+    temp_max = plan["weather"].get("temp_max")
+    precip = plan["weather"].get("precip")
+
+    lines = [f"从「{plan['origin']}」到「{plan['destination']}」的出行方案（共 {len(scored)} 套，按综合评分排序）："]
+    if weather_desc:
+        lines.append(f"当前天气参考：{weather_desc}"
+                     + (f"，{temp_min}~{temp_max}°C" if temp_min is not None else "")
+                     + (f"，降水 {precip}mm" if precip else ""))
+
+    for i, r in enumerate(scored, 1):
+        lines.append(
+            f"{i}. 【{r['mode']}】耗时 {r['duration_min']} 分钟 / 距离 {r['distance_km']}km / 费用约 {r['cost']} 元"
+            f"（综合评分 {r['total_score']}，时间 {r['time_score']} / 费用 {r['cost_score']} / 天气 {r['weather_score']}）"
+        )
+        if r.get("detail"):
+            lines.append(f"   {r['detail']}")
+
+    if weather_desc:
+        if precip and precip > 0:
+            lines.append(f"\n⚠️ 天气提示：当天有降水（{precip}mm），建议优先选择耗时短、换乘少的方案，备好雨具。")
+        if any(bad in weather_desc for bad in ("雨", "雷", "雪")):
+            lines.append("   雨天路滑，驾车请减速，步行/骑行注意安全。")
+
+    return "\n".join(lines)
+
+
+async def plan_structured(
+    origin: str,
+    destination: str,
+    city: str | None = None,
+) -> dict[str, Any]:
+    """出行规划结构化入口，返回可直接用于前端渲染的 dict。
+
+    结构：
+    {
+      "origin": "…", "destination": "…",
+      "weather": {"desc": "…", "temp_min":…, "temp_max":…, "precip":…},
+      "routes": [ {"mode","duration_min","distance_km","cost","detail",
+                    "time_score","cost_score","weather_score","total_score"}, … ],
+      "error"?: str, "hint"?: str
+    }
+    """
     if not origin or not destination:
-        return "请提供出发地和目的地，例如「从广州南站到广州塔怎么走」。"
+        return {"error": "请提供出发地和目的地，例如「从广州南站到广州塔怎么走」。"}
 
     plan = await amap_client.plan_route(origin, destination, city)
     routes = plan.get("routes", [])
     if not routes:
-        return plan.get("error", "路线规划失败，请稍后重试或提供更具体的地点。")
+        err = plan.get("error", "路线规划失败，请稍后重试或提供更具体的地点。")
+        return {"error": err, "origin": origin, "destination": destination, "routes": []}
 
     # 天气
     weather_desc = ""
@@ -83,29 +136,24 @@ async def run(origin: str, destination: str, city: str | None = None) -> str:
         cs = cost_score(r["cost"], max_cost)
         ws = weather_score(weather_desc, temp_min, temp_max, precip)
         total = WEIGHT_TIME * ts + WEIGHT_COST * cs + WEIGHT_WEATHER * ws
-        scored.append({**r, "time_score": round(ts, 2), "cost_score": round(cs, 2),
-                       "weather_score": round(ws, 2), "total_score": round(total, 3)})
+        scored.append({
+            **r,
+            "time_score": round(ts, 2),
+            "cost_score": round(cs, 2),
+            "weather_score": round(ws, 2),
+            "total_score": round(total, 3),
+        })
 
     scored.sort(key=lambda r: r["total_score"], reverse=True)
 
-    lines = [f"从「{plan['origin']}」到「{plan['destination']}」的出行方案（共 {len(scored)} 套，按综合评分排序）："]
-    if weather_desc:
-        lines.append(f"当前天气参考：{weather_desc}"
-                     + (f"，{temp_min}~{temp_max}°C" if temp_min is not None else "")
-                     + (f"，降水 {precip}mm" if precip else ""))
-
-    for i, r in enumerate(scored, 1):
-        lines.append(
-            f"{i}. 【{r['mode']}】耗时 {r['duration_min']} 分钟 / 距离 {r['distance_km']}km / 费用约 {r['cost']} 元"
-            f"（综合评分 {r['total_score']}，时间 {r['time_score']} / 费用 {r['cost_score']} / 天气 {r['weather_score']}）"
-        )
-        if r.get("detail"):
-            lines.append(f"   {r['detail']}")
-
-    if weather_desc:
-        if precip and precip > 0:
-            lines.append(f"\n⚠️ 天气提示：当天有降水（{precip}mm），建议优先选择耗时短、换乘少的方案，备好雨具。")
-        if any(bad in weather_desc for bad in ("雨", "雷", "雪")):
-            lines.append("   雨天路滑，驾车请减速，步行/骑行注意安全。")
-
-    return "\n".join(lines)
+    return {
+        "origin": plan.get("origin", origin),
+        "destination": plan.get("destination", destination),
+        "weather": {
+            "desc": weather_desc,
+            "temp_min": temp_min,
+            "temp_max": temp_max,
+            "precip": precip,
+        },
+        "routes": scored,
+    }

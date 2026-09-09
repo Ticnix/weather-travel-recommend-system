@@ -2,7 +2,7 @@
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import CurrentUser
@@ -17,10 +17,11 @@ router = APIRouter(prefix="/api/v1/weather", tags=["气象数据"])
 
 def _to_out(w: WeatherHistory) -> dict:
     d = WeatherHistoryOut.model_validate(w).model_dump()
-    # 预报行复用字段：temperature=最高, feels_like=最低
-    if w.is_forecast:
-        d["temp_max"] = w.temperature
-        d["temp_min"] = w.feels_like
+    # 统一输出 temp_max / temp_min：
+    #   预报行：temperature=最高, feels_like=最低
+    #   实测行：temperature=实况温, feels_like=体感温（均作为展示用高/低温）
+    d["temp_max"] = w.temperature
+    d["temp_min"] = w.feels_like
     return d
 
 
@@ -48,6 +49,21 @@ async def sync_async(current: CurrentUser) -> dict:
 
     task = sync_weather_manual.delay()
     return success({"task_id": task.id, "status": "PENDING"}, message="已提交异步同步任务")
+
+
+@router.post("/sync-history", response_model=dict)
+async def sync_history(current: CurrentUser, days: int = 30) -> dict:
+    """回补过去 N 天的日统计作为实测写入时序表（鉴权）。默认 30 天。
+
+    用于让「近 30 天天气时间轴」的过去部分有完整数据（Open-Meteo past_days 支持）。
+    """
+    bundle = await weather_sync.fetch_and_store(past_days=days)
+    past = sum(1 for d in bundle.daily if not d.is_forecast)
+    future = sum(1 for d in bundle.daily if d.is_forecast)
+    return success(
+        {"past_days": past, "forecast_days": future, "location": bundle.location_code},
+        message=f"历史回补成功：过去 {past} 天 + 未来 {future} 天",
+    )
 
 
 @router.get("/sync-result/{task_id}", response_model=dict)
@@ -107,5 +123,51 @@ async def alerts(current: CurrentUser) -> dict:
                 for a in bundle.alerts
             ],
             "total": len(bundle.alerts),
+        }
+    )
+
+
+@router.get("/stats", response_model=dict)
+async def stats(
+    current: CurrentUser,
+    days: int = 30,
+    location: str = "gz",
+) -> dict:
+    """管理端时序统计：按天聚合温度/湿度/降水均值（鉴权）。"""
+    days = max(3, min(days, 365))
+    rows = await weather_sync.agg_daily(location_code=location, days=days)
+    return success({"items": rows, "total": len(rows)})
+
+
+@router.get("/admin-list", response_model=dict)
+async def admin_list(
+    current: CurrentUser,
+    page: int = 1,
+    page_size: int = 20,
+    location: str = "gz",
+    date_from: str | None = Query(None, description="起始日期 YYYY-MM-DD"),
+    date_to: str | None = Query(None, description="结束日期 YYYY-MM-DD"),
+    weather: str | None = Query(None, description="天气描述关键字，如：雨/晴"),
+    forecast: str | None = Query(None, description="true=预报 / false=实测 / 空=全部"),
+) -> dict:
+    """管理端气象时序分页查询（鉴权）。支持日期/天气/预报类型筛选。"""
+    page = max(1, page)
+    page_size = min(max(1, page_size), 200)
+    fg = None if forecast is None else (forecast.lower() == "true")
+    rows, total = await weather_sync.page_records(
+        location_code=location,
+        page=page,
+        page_size=page_size,
+        date_from=date_from,
+        date_to=date_to,
+        weather_desc=weather,
+        forecast=fg,
+    )
+    return success(
+        {
+            "items": [_to_out(r) for r in rows],
+            "total": total,
+            "page": page,
+            "page_size": page_size,
         }
     )

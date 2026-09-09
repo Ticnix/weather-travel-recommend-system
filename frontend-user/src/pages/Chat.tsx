@@ -1,14 +1,4 @@
-import {
-  Avatar,
-  Button,
-  Card,
-  Input,
-  Space,
-  Tag,
-  Typography,
-  Spin,
-  Empty,
-} from 'antd'
+import { Avatar, Button, Input, Space, Typography, Spin } from 'antd'
 import { RobotOutlined, SendOutlined, UserOutlined, ThunderboltOutlined } from '@ant-design/icons'
 import { useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
@@ -23,7 +13,6 @@ interface Message {
   streaming?: boolean
 }
 
-// 建议问题（引导用户快速体验）
 const SUGGESTIONS = [
   '广州今天天气怎么样',
   '明天爬山穿什么',
@@ -39,7 +28,6 @@ export default function Chat() {
   const listRef = useRef<HTMLDivElement>(null)
   const conversationRef = useRef<string | null>(null)
 
-  // 首页快捷入口跳转时，自动带话题填充
   useEffect(() => {
     const topic = searchParams.get('topic')
     if (topic) {
@@ -52,7 +40,6 @@ export default function Chat() {
     }
   }, [searchParams])
 
-  // 自动滚动到底部
   useEffect(() => {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: 'smooth' })
   }, [messages])
@@ -63,19 +50,17 @@ export default function Chat() {
 
     setInput('')
     setSending(true)
-
-    // 追加用户消息 + 空的 assistant 占位（流式填充）
-    const userMsg: Message = { role: 'user', content }
-    setMessages((prev) => [...prev, userMsg, { role: 'assistant', content: '', streaming: true }])
+    setMessages((prev) => [
+      ...prev,
+      { role: 'user', content },
+      { role: 'assistant', content: '', streaming: true },
+    ])
 
     try {
       const resp = await fetch('/api/v1/chat/stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: content,
-          conversation_id: conversationRef.current,
-        }),
+        body: JSON.stringify({ message: content, conversation_id: conversationRef.current }),
       })
 
       if (!resp.ok || !resp.body) throw new Error('流式请求失败')
@@ -89,7 +74,6 @@ export default function Chat() {
         if (done) break
         buffer += decoder.decode(value, { stream: true })
 
-        // SSE 数据按换行切分，逐行解析 data: {...}
         const lines = buffer.split('\n')
         buffer = lines.pop() ?? ''
 
@@ -114,8 +98,6 @@ export default function Chat() {
                 if (last?.role === 'assistant') last.content += evt.content
                 return next
               })
-            } else if (evt.type === 'done') {
-              // 流式结束
             }
           } catch {
             // 忽略无法解析的行
@@ -141,25 +123,38 @@ export default function Chat() {
   }
 
   return (
-    <Card
-      style={{ borderRadius: 16, height: 'calc(100vh - 180px)', display: 'flex', flexDirection: 'column' }}
-      styles={{ body: { flex: 1, display: 'flex', flexDirection: 'column', height: '100%', padding: 0 } }}
+    <div
+      className="jp-card"
+      style={{
+        height: 'calc(100vh - 170px)',
+        display: 'flex',
+        flexDirection: 'column',
+        overflow: 'hidden',
+      }}
     >
       {/* 消息列表 */}
-      <div ref={listRef} style={{ flex: 1, overflowY: 'auto', padding: '20px 24px' }}>
+      <div ref={listRef} style={{ flex: 1, overflowY: 'auto', padding: '24px' }}>
         {messages.length === 0 ? (
-          <Empty
-            style={{ marginTop: 80 }}
-            description="和 AI 助手聊聊天气、穿搭、出行吧"
-          >
-            <Space wrap style={{ justifyContent: 'center' }}>
-              {SUGGESTIONS.map((s) => (
-                <Button key={s} size="small" onClick={() => send(s)}>
-                  {s}
-                </Button>
-              ))}
-            </Space>
-          </Empty>
+          <div style={{ textAlign: 'center', marginTop: 80 }}>
+            <span style={{ fontSize: 52 }}>🌤️</span>
+            <div className="jp-serif" style={{ fontSize: 20, marginTop: 16, fontWeight: 600, color: 'var(--jp-ink)' }}>
+              和 AI 助手聊聊天气、穿搭、出行吧
+            </div>
+            <div style={{ marginTop: 24 }}>
+              <Space wrap style={{ justifyContent: 'center' }}>
+                {SUGGESTIONS.map((s) => (
+                  <Button
+                    key={s}
+                    size="small"
+                    onClick={() => send(s)}
+                    style={{ borderColor: 'var(--jp-border-strong)', color: 'var(--jp-indigo)' }}
+                  >
+                    {s}
+                  </Button>
+                ))}
+              </Space>
+            </div>
+          </div>
         ) : (
           <Space direction="vertical" size={20} style={{ width: '100%' }}>
             {messages.map((msg, i) => (
@@ -170,28 +165,35 @@ export default function Chat() {
                   justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start',
                 }}
               >
-                <Space
-                  align="start"
-                  size={10}
-                  style={{ maxWidth: '80%' }}
-                >
+                <Space align="start" size={10} style={{ maxWidth: '80%' }}>
                   {msg.role === 'assistant' && (
-                    <Avatar icon={<RobotOutlined />} style={{ background: '#1677ff' }} />
+                    <Avatar
+                      icon={<RobotOutlined />}
+                      style={{ background: 'var(--jp-bg-2)', color: 'var(--jp-indigo)', border: '1px solid var(--jp-border-strong)' }}
+                    />
                   )}
                   <div>
                     {msg.role === 'assistant' && msg.intent && (
-                      <Tag color="blue" style={{ marginBottom: 4 }}>
+                      <span className="jp-chip" style={{ marginBottom: 4, color: 'var(--jp-moss)', borderColor: 'var(--jp-moss)' }}>
                         意图: {msg.intent}
-                      </Tag>
+                      </span>
                     )}
                     <div
                       style={{
-                        background: msg.role === 'user' ? '#1677ff' : '#f5f5f5',
-                        color: msg.role === 'user' ? '#fff' : '#333',
+                        background:
+                          msg.role === 'user'
+                            ? 'var(--jp-indigo)'
+                            : 'var(--jp-panel-2)',
+                        border:
+                          msg.role === 'user'
+                            ? '1px solid var(--jp-indigo)'
+                            : '1px solid var(--jp-border)',
+                        color: msg.role === 'user' ? '#fffdf9' : 'var(--jp-ink)',
                         padding: '10px 14px',
-                        borderRadius: 12,
+                        borderRadius: 14,
                         whiteSpace: 'pre-wrap',
                         wordBreak: 'break-word',
+                        boxShadow: 'var(--jp-shadow-sm)',
                       }}
                     >
                       {msg.content}
@@ -199,7 +201,10 @@ export default function Chat() {
                     </div>
                   </div>
                   {msg.role === 'user' && (
-                    <Avatar icon={<UserOutlined />} style={{ background: '#52c41a' }} />
+                    <Avatar
+                      icon={<UserOutlined />}
+                      style={{ background: 'var(--jp-sakura)', color: '#fffdf9', border: '1px solid var(--jp-sakura)' }}
+                    />
                   )}
                 </Space>
               </div>
@@ -209,7 +214,7 @@ export default function Chat() {
       </div>
 
       {/* 输入区 */}
-      <div style={{ borderTop: '1px solid #f0f0f0', padding: '16px 24px' }}>
+      <div style={{ borderTop: '1px solid var(--jp-border)', padding: '16px 24px' }}>
         <Space.Compact style={{ width: '100%' }}>
           <TextArea
             value={input}
@@ -223,6 +228,7 @@ export default function Chat() {
               }
             }}
             disabled={sending}
+            style={{ background: 'var(--jp-panel)' }}
           />
           <Button
             type="primary"
@@ -234,10 +240,11 @@ export default function Chat() {
             发送
           </Button>
         </Space.Compact>
-        <Paragraph type="secondary" style={{ margin: '8px 0 0', fontSize: 12 }}>
-          <ThunderboltOutlined /> 支持天气查询、穿搭推荐、出行规划，Enter 发送，Shift+Enter 换行
+        <Paragraph style={{ margin: '8px 0 0', fontSize: 12, color: 'var(--jp-ink-3)' }}>
+          <ThunderboltOutlined style={{ color: 'var(--jp-amber)' }} /> 支持天气查询、穿搭推荐、出行规划
+          · Enter 发送 · Shift+Enter 换行
         </Paragraph>
       </div>
-    </Card>
+    </div>
   )
 }

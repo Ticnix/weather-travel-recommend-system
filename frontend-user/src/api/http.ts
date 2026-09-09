@@ -6,6 +6,16 @@ const http = axios.create({
   timeout: 30000,
 })
 
+// 请求拦截：自动携带 JWT（内联读取，避免与 auth.ts 循环依赖）
+http.interceptors.request.use((config) => {
+  const token = localStorage.getItem('wt_token')
+  if (token) {
+    config.headers = config.headers ?? {}
+    config.headers.Authorization = `Bearer ${token}`
+  }
+  return config
+})
+
 // 响应拦截：解包统一响应体 { code, message, data }
 http.interceptors.response.use(
   (resp) => {

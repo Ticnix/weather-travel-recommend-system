@@ -1,4 +1,6 @@
-﻿from sqlalchemy import ForeignKey, String, Text
+﻿from datetime import datetime
+
+from sqlalchemy import ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base, TimestampMixin
@@ -18,6 +20,8 @@ class Feedback(Base, TimestampMixin):
     status: Mapped[str] = mapped_column(
         String(16), default="pending", nullable=False, index=True
     )  # pending / processing / resolved / closed
+    reply: Mapped[str | None] = mapped_column(Text, nullable=True)  # 管理员回复
+    reply_at: Mapped[datetime | None] = mapped_column(nullable=True)  # 回复时间
 
     def __repr__(self) -> str:
         return f"<Feedback id={self.id} status={self.status}>"

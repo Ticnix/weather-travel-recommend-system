@@ -6,6 +6,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from app.services import rag_service
 from app.services.weather_service import fetch_weather
 
@@ -69,6 +71,39 @@ def _build_rules(temp: float, weather_desc: str, scene: str | None) -> list[str]
 
 async def run(city: str | None = None, scene: str | None = None, preference: str | None = None) -> str:
     """穿搭推荐主入口，返回结构化文本（交给 LLM 生成最终建议）。"""
+    data = await outfit_structured(city, scene, preference)
+    weather = data["weather"]
+    weather_ctx = f"气温最高 {weather['temp']}°C，天气 {weather['desc']}，降水 {weather['precip']}mm"
+    lines = [f"【气象参数】{weather_ctx}", "【穿搭规则】"]
+    lines += [f"- {r}" for r in data["rules"]]
+    if data["preference_rule"]:
+        lines.append(f"- 用户偏好调整：{data['preference_rule']}")
+    if data["knowledge"]:
+        lines.append("【知识库参考】")
+        lines.append(data["knowledge"])
+    lines.append("\n请基于以上信息，用简洁友好的中文生成具体的穿搭建议（上衣/下装/鞋/配饰，可分点），并说明理由。")
+    return "\n".join(lines)
+
+
+async def outfit_structured(
+    city: str | None = None,
+    scene: str | None = None,
+    preference: str | None = None,
+) -> dict[str, Any]:
+    """穿搭推荐结构化入口，返回可直接用于前端渲染的 dict。
+
+    结构：
+    {
+      "city": "…",
+      "weather": {"desc", "temp", "precip", "min", "max"},
+      "scene": …, "preference": …,
+      "temp_rule": str | null,      # 温度档基础建议
+      "rules": [str, …],            # 命中规则（温度/天气/场景/偏好）
+      "preference_rule": str | null,
+      "knowledge": str,             # RAG 参考文本
+      "suggestion": str             # 基于规则的整合文案
+    }
+    """
     bundle = await fetch_weather(city or "广州")
     daily = bundle.daily[0] if bundle.daily else None
     temp = (daily.temp_max if daily else (bundle.current.temperature or 25)) or 25
@@ -76,6 +111,9 @@ async def run(city: str | None = None, scene: str | None = None, preference: str
     precip = (daily.precipitation_sum if daily else bundle.current.precipitation) or 0
 
     rules = _build_rules(temp, weather_desc, scene)
+    temp_rule = next(
+        (rule for (lo, hi), rule in TEMP_RULES if lo <= temp < hi), None
+    )
 
     pref_rule = ""
     if preference:
@@ -93,15 +131,24 @@ async def run(city: str | None = None, scene: str | None = None, preference: str
     except Exception:  # noqa: BLE001
         knowledge = ""
 
-    weather_ctx = f"气温最高 {temp}°C，天气 {weather_desc}，降水 {precip}mm"
-
-    lines = [f"【气象参数】{weather_ctx}", "【穿搭规则】"]
-    lines += [f"- {r}" for r in rules]
+    # 基于规则整合一段可直接展示的文案
+    parts = list(rules)
     if pref_rule:
-        lines.append(f"- 用户偏好调整：{pref_rule}")
-    if knowledge:
-        lines.append("【知识库参考】")
-        lines.append(knowledge)
-    lines.append("\n请基于以上信息，用简洁友好的中文生成具体的穿搭建议（上衣/下装/鞋/配饰，可分点），并说明理由。")
+        parts.append(pref_rule)
+    suggestion = "今日建议：" + "；".join(parts) if parts else "暂无明确的穿搭建议。"
 
-    return "\n".join(lines)
+    return {
+        "city": city or "广州",
+        "weather": {
+            "desc": weather_desc,
+            "temp": temp,
+            "precip": precip,
+        },
+        "scene": scene,
+        "preference": preference,
+        "temp_rule": temp_rule,
+        "rules": rules,
+        "preference_rule": pref_rule or None,
+        "knowledge": knowledge,
+        "suggestion": suggestion,
+    }

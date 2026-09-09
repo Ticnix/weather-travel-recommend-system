@@ -1,24 +1,34 @@
-import { Layout, Menu, Space, Typography, theme } from 'antd'
+import { Avatar, Button, Dropdown, Layout, Menu, Space, Typography } from 'antd'
 import {
   HomeOutlined,
   MessageOutlined,
   ReadOutlined,
   CalendarOutlined,
   UserOutlined,
-  CloudOutlined,
-  GlobalOutlined,
+  CommentOutlined,
+  LogoutOutlined,
+  CompassOutlined,
 } from '@ant-design/icons'
+import { useEffect, useState } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
+import {
+  clearAuth,
+  fetchMe,
+  getStoredUser,
+  isLoggedIn,
+  type AuthUser,
+} from '../api/auth'
 
 const { Header, Content, Footer } = Layout
 const { Title } = Typography
 
-// 导航项：预留后续功能入口（资讯、行程等 Day 18 接入）
+// 导航项
 const NAV_ITEMS = [
   { key: '/', icon: <HomeOutlined />, label: '首页' },
-  { key: '/weather3d', icon: <GlobalOutlined />, label: '3D 天气' },
   { key: '/chat', icon: <MessageOutlined />, label: 'AI 助手' },
+  { key: '/recommend', icon: <CompassOutlined />, label: '智能推荐' },
   { key: '/news', icon: <ReadOutlined />, label: '气象资讯' },
+  { key: '/feedback', icon: <CommentOutlined />, label: '意见反馈' },
   { key: '/itinerary', icon: <CalendarOutlined />, label: '我的行程' },
   { key: '/profile', icon: <UserOutlined />, label: '我的' },
 ]
@@ -26,24 +36,41 @@ const NAV_ITEMS = [
 export default function MainLayout() {
   const navigate = useNavigate()
   const location = useLocation()
-  const { token } = theme.useToken()
+  const [user, setUser] = useState<AuthUser | null>(null)
+  const [loggedIn, setLoggedIn] = useState(isLoggedIn())
 
-  // 选中当前路由对应的菜单项
+  useEffect(() => {
+    if (!loggedIn) {
+      setUser(null)
+      return
+    }
+    setUser(getStoredUser())
+    fetchMe().then(setUser).catch(() => {})
+  }, [loggedIn])
+
   const selectedKey = NAV_ITEMS.find((item) =>
     item.key === '/' ? location.pathname === '/' : location.pathname.startsWith(item.key),
   )?.key
 
+  const handleLogout = () => {
+    clearAuth()
+    setLoggedIn(false)
+    setUser(null)
+    navigate('/')
+  }
+
   return (
-    <Layout style={{ minHeight: '100vh' }}>
+    <Layout style={{ minHeight: '100vh', background: 'transparent' }}>
       <Header
         style={{
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
           padding: '0 24px',
-          background: 'rgba(255,255,255,0.9)',
-          backdropFilter: 'blur(8px)',
-          borderBottom: `1px solid ${token.colorBorderSecondary}`,
+          height: 64,
+          background: 'rgba(255, 253, 249, 0.85)',
+          backdropFilter: 'blur(10px)',
+          borderBottom: '1px solid var(--jp-border)',
           position: 'sticky',
           top: 0,
           zIndex: 100,
@@ -54,26 +81,60 @@ export default function MainLayout() {
           style={{ cursor: 'pointer' }}
           size={10}
         >
-          <CloudOutlined style={{ fontSize: 26, color: token.colorPrimary }} />
-          <Title level={4} style={{ margin: 0 }}>
+          <span style={{ fontSize: 24 }}>🌤️</span>
+          <Title level={4} style={{ margin: 0, color: 'var(--jp-ink)' }} className="jp-serif">
             广州天气旅行助手
           </Title>
         </Space>
-        <Menu
-          mode="horizontal"
-          selectedKeys={selectedKey ? [selectedKey] : []}
-          items={NAV_ITEMS}
-          onClick={(e) => navigate(e.key)}
-          style={{ flex: 1, justifyContent: 'flex-end', borderBottom: 'none', minWidth: 0 }}
-        />
+        <Space size={16} align="center">
+          <Menu
+            mode="horizontal"
+            selectedKeys={selectedKey ? [selectedKey] : []}
+            items={NAV_ITEMS}
+            onClick={(e) => navigate(e.key)}
+            style={{
+              borderBottom: 'none',
+              minWidth: 0,
+              background: 'transparent',
+              fontSize: 15,
+            }}
+          />
+          {loggedIn ? (
+            <Dropdown
+              menu={{
+                items: [
+                  { key: 'profile', label: '我的', onClick: () => navigate('/profile') },
+                  { type: 'divider' },
+                  { key: 'logout', icon: <LogoutOutlined />, label: '退出登录', onClick: handleLogout },
+                ],
+              }}
+            >
+              <Space style={{ cursor: 'pointer' }}>
+                <Avatar
+                  size={32}
+                  src={user?.avatar || undefined}
+                  icon={<UserOutlined />}
+                  style={{ background: !user?.avatar ? 'var(--jp-indigo)' : undefined, color: '#fffdf9' }}
+                />
+                <span style={{ color: 'var(--jp-ink)' }}>{user?.nickname || user?.username || '我的'}</span>
+              </Space>
+            </Dropdown>
+          ) : (
+            <Button type="primary" onClick={() => navigate('/login', { state: { from: '/profile' } })}>
+              登录
+            </Button>
+          )}
+        </Space>
       </Header>
 
-      <Content style={{ padding: '24px', maxWidth: 1200, width: '100%', margin: '0 auto' }}>
+      <Content style={{ padding: '28px 24px', maxWidth: 1100, width: '100%', margin: '0 auto' }}>
         <Outlet />
       </Content>
 
-      <Footer style={{ textAlign: 'center', color: token.colorTextTertiary }}>
-        基于气象大数据的 AI 出行推荐系统 · 广州
+      <Footer style={{ textAlign: 'center', color: 'var(--jp-ink-3)', background: 'transparent', borderTop: '1px solid var(--jp-border)' }}>
+        <span style={{ fontSize: 12 }}>
+          基于气象大数据的 AI 出行推荐系统 · 广州
+        </span>
       </Footer>
     </Layout>
   )

@@ -1,53 +1,53 @@
-import { Card, Col, Row, Space, Typography } from 'antd'
+import { Col, Row, Space, Typography } from 'antd'
 import {
   MessageOutlined,
   ThunderboltOutlined,
   CalendarOutlined,
   CompassOutlined,
-  GlobalOutlined,
+  CommentOutlined,
 } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
 import WeatherHero from '../components/WeatherHero'
 import ForecastList from '../components/ForecastList'
 
-const { Title, Paragraph } = Typography
+const { Paragraph } = Typography
 
-// 快捷功能入口（预留：穿搭/出行推荐 Day 18 接入具体页面）
+// 快捷功能入口（日式点缀色：小面积克制使用）
 const QUICK_ACTIONS = [
   {
     key: 'chat',
-    icon: <MessageOutlined style={{ fontSize: 28 }} />,
+    icon: <MessageOutlined />,
     title: 'AI 智能问答',
     desc: '天气 / 穿搭 / 出行一站式咨询',
-    color: '#1677ff',
+    color: '#3b5b8c',
   },
   {
     key: 'outfit',
-    icon: <ThunderboltOutlined style={{ fontSize: 28 }} />,
+    icon: <ThunderboltOutlined />,
     title: '穿搭推荐',
     desc: '根据天气场景推荐今日穿搭',
-    color: '#722ed1',
+    color: '#d9543f',
   },
   {
     key: 'travel',
-    icon: <CompassOutlined style={{ fontSize: 28 }} />,
+    icon: <CompassOutlined />,
     title: '出行规划',
     desc: '多维度评分推荐最优路线',
-    color: '#13c2c2',
+    color: '#5a7d5a',
   },
   {
     key: 'itinerary',
-    icon: <CalendarOutlined style={{ fontSize: 28 }} />,
+    icon: <CalendarOutlined />,
     title: '行程提醒',
     desc: '结合天气的出行提醒',
-    color: '#fa8c16',
+    color: '#d99a4e',
   },
   {
-    key: 'weather3d',
-    icon: <GlobalOutlined style={{ fontSize: 28 }} />,
-    title: '3D 天气可视化',
-    desc: '沉浸式三维天气特效',
-    color: '#2f54eb',
+    key: 'feedback',
+    icon: <CommentOutlined />,
+    title: '意见反馈',
+    desc: '问题反馈与建议提交',
+    color: '#e3a7ad',
   },
 ]
 
@@ -65,39 +65,77 @@ export default function Home() {
       {/* 快捷功能入口 */}
       <Row gutter={[16, 16]}>
         {QUICK_ACTIONS.map((action) => (
-          <Col key={action.key} xs={12} md={6}>
-            <Card
-              hoverable
-              onClick={() =>
-                action.key === 'chat'
-                  ? navigate('/chat')
-                  : action.key === 'weather3d'
-                    ? navigate('/weather3d')
-                    : navigate(`/chat?topic=${action.key}`)
-              }
-              style={{ borderRadius: 16, height: '100%' }}
-              styles={{ body: { padding: 20 } }}
+          <Col key={action.key} xs={12} md={8} lg={24 / 5 > 4 ? 4 : 4}>
+            <div
+              className="jp-card"
+              onClick={() => {
+                const routeMap: Record<string, string> = {
+                  chat: '/chat',
+                  feedback: '/feedback',
+                  itinerary: '/itinerary',
+                  outfit: '/recommend?tab=outfit',
+                  travel: '/recommend?tab=travel',
+                }
+                navigate(routeMap[action.key] ?? `/chat?topic=${action.key}`)
+              }}
+              style={{
+                padding: 20,
+                cursor: 'pointer',
+                height: '100%',
+              }}
             >
-              <Space direction="vertical" size={8}>
-                <span style={{ color: action.color }}>{action.icon}</span>
-                <Title level={5} style={{ margin: 0 }}>
-                  {action.title}
-                </Title>
-                <Paragraph type="secondary" style={{ margin: 0, fontSize: 12 }}>
-                  {action.desc}
-                </Paragraph>
+              <Space direction="vertical" size={12}>
+                <span
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    width: 44,
+                    height: 44,
+                    borderRadius: 12,
+                    fontSize: 22,
+                    color: action.color,
+                    background: `${action.color}14`,
+                  }}
+                >
+                  {action.icon}
+                </span>
+                <div>
+                  <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--jp-ink)' }}>
+                    {action.title}
+                  </div>
+                  <Paragraph style={{ margin: '4px 0 0', fontSize: 12.5, color: 'var(--jp-ink-2)' }}>
+                    {action.desc}
+                  </Paragraph>
+                </div>
               </Space>
-            </Card>
+            </div>
           </Col>
         ))}
       </Row>
 
-      {/* 预留：出行/穿搭推荐结果展示区（Day 18 接入） */}
-      <Card title="为你推荐" style={{ borderRadius: 16 }}>
-        <Paragraph type="secondary" style={{ margin: 0 }}>
-          出行推荐、穿搭建议、行程提醒等内容将在这里展示（开发中）。
-        </Paragraph>
-      </Card>
+      {/* 智能推荐引导 */}
+      <div
+        className="jp-card"
+        style={{ padding: 24, cursor: 'pointer' }}
+        onClick={() => navigate('/recommend')}
+      >
+        <div className="jp-serif" style={{ fontSize: 16, fontWeight: 600, marginBottom: 8, color: 'var(--jp-ink)' }}>
+          智能出行 · 穿搭助手
+        </div>
+        <Row gutter={[16, 8]}>
+          <Col xs={24} md={12}>
+            <Paragraph style={{ margin: 0, color: 'var(--jp-ink-2)' }}>
+              🚇 输入出发地和目的地，获取多套带天气评分的最优出行方案
+            </Paragraph>
+          </Col>
+          <Col xs={24} md={12}>
+            <Paragraph style={{ margin: 0, color: 'var(--jp-ink-2)' }}>
+              👔 按今日气象 + 出行场景，推荐最合适的穿搭
+            </Paragraph>
+          </Col>
+        </Row>
+      </div>
     </Space>
   )
 }

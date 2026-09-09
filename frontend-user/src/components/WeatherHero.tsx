@@ -1,11 +1,11 @@
-import { Card, Col, Row, Space, Statistic, Tag, Typography, Spin, Empty } from 'antd'
+import { Col, Row, Space, Spin, Typography } from 'antd'
 import { useEffect, useState } from 'react'
 import { getCurrentWeather, type CurrentWeather } from '../api/weather'
 import { getWeatherVisual } from '../utils/weather'
 
-const { Title, Text } = Typography
+const { Text } = Typography
 
-// 首页顶部天气主卡片：大图标 + 温度 + 关键指标
+// 首页顶部天气主卡片（日式简洁）：温润大数字 + 柔和指标
 export default function WeatherHero() {
   const [weather, setWeather] = useState<CurrentWeather | null>(null)
   const [loading, setLoading] = useState(true)
@@ -19,43 +19,48 @@ export default function WeatherHero() {
 
   if (loading) {
     return (
-      <Card style={{ textAlign: 'center', padding: 40 }}>
+      <div className="jp-card" style={{ padding: 40, textAlign: 'center' }}>
         <Spin tip="正在获取实时天气..." />
-      </Card>
+      </div>
     )
   }
 
   if (!weather) {
     return (
-      <Card>
-        <Empty description="暂无天气数据，请稍后刷新" />
-      </Card>
+      <div className="jp-card" style={{ padding: 40, textAlign: 'center' }}>
+        <Text style={{ color: 'var(--jp-ink-2)' }}>暂无天气数据，请稍后刷新</Text>
+      </div>
     )
   }
 
   const visual = getWeatherVisual(weather.weather_desc)
 
+  const metrics = [
+    { label: '湿度', value: weather.humidity, unit: '%' },
+    { label: '风速', value: weather.wind_speed, unit: 'km/h' },
+    { label: '降水', value: weather.precipitation, unit: 'mm' },
+    { label: '能见度', value: weather.visibility, unit: 'km' },
+  ]
+
   return (
-    <Card
-      style={{
-        background: `linear-gradient(135deg, ${visual.color}22 0%, #ffffff 60%)`,
-        borderRadius: 16,
-        overflow: 'hidden',
-      }}
-      styles={{ body: { padding: '32px' } }}
-    >
+    <div className="jp-card" style={{ padding: '28px 32px' }}>
       <Row align="middle" gutter={[32, 24]}>
         <Col flex="auto">
-          <Space size={20} align="center">
-            <span style={{ fontSize: 88, lineHeight: 1 }}>{visual.icon}</span>
+          <Space size={24} align="center">
+            <span style={{ fontSize: 84, lineHeight: 1 }}>{visual.icon}</span>
             <div>
-              <Title level={1} style={{ margin: 0, fontSize: 56 }}>
+              <div
+                className="jp-serif"
+                style={{ fontSize: 60, fontWeight: 600, lineHeight: 1, color: 'var(--jp-ink)' }}
+              >
                 {weather.temperature ?? '--'}
-                <span style={{ fontSize: 28 }}>°C</span>
-              </Title>
-              <Space size={8} style={{ marginTop: 8 }}>
-                <Tag color={visual.color}>{visual.label}</Tag>
-                <Text type="secondary">体感 {weather.feels_like ?? '--'}°C</Text>
+                <span style={{ fontSize: 26, color: 'var(--jp-ink-2)' }}>°C</span>
+              </div>
+              <Space size={8} style={{ marginTop: 10 }}>
+                <span className="jp-chip" style={{ color: visual.color, borderColor: `${visual.color}55`, background: `${visual.color}12` }}>
+                  {visual.label}
+                </span>
+                <Text style={{ color: 'var(--jp-ink-2)' }}>体感 {weather.feels_like ?? '--'}°C</Text>
               </Space>
             </div>
           </Space>
@@ -63,13 +68,21 @@ export default function WeatherHero() {
 
         <Col>
           <Space size={32} wrap>
-            <Statistic title="湿度" value={weather.humidity ?? '--'} suffix="%" />
-            <Statistic title="风速" value={weather.wind_speed ?? '--'} suffix="km/h" />
-            <Statistic title="降水量" value={weather.precipitation ?? '--'} suffix="mm" />
-            <Statistic title="能见度" value={weather.visibility ?? '--'} suffix="km" />
+            {metrics.map((m) => (
+              <div key={m.label} style={{ textAlign: 'center' }}>
+                <div
+                  className="jp-serif"
+                  style={{ fontSize: 24, fontWeight: 600, color: 'var(--jp-ink)' }}
+                >
+                  {m.value ?? '--'}
+                  <span style={{ fontSize: 12, marginLeft: 2, color: 'var(--jp-ink-2)' }}>{m.unit}</span>
+                </div>
+                <div style={{ color: 'var(--jp-ink-3)', fontSize: 12, marginTop: 4 }}>{m.label}</div>
+              </div>
+            ))}
           </Space>
         </Col>
       </Row>
-    </Card>
+    </div>
   )
 }

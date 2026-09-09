@@ -67,6 +67,7 @@ class DailyForecast:
     weather_desc: str | None
     sunrise: str | None
     sunset: str | None
+    is_forecast: bool = True  # True=未来预报 / False=过去实测(历史回补)
 
 
 @dataclass
@@ -99,8 +100,13 @@ class WeatherClient:
         latitude: float | None = None,
         longitude: float | None = None,
         location_code: str | None = None,
+        past_days: int = 0,
     ) -> WeatherBundle:
-        """一次性拉取实时 + 7 天预报 + 衍生预警。"""
+        """一次性拉取实时 +（过去 past_days 天）+ 未来 7 天预报 + 衍生预警。
+
+        past_days>0 时，Open-Meteo 会在 daily 数组前面返回过去 N 天的日统计，
+        用于回补历史天气（作为实测写入时序表）。
+        """
         lat = latitude if latitude is not None else settings.DEFAULT_LATITUDE
         lon = longitude if longitude is not None else settings.DEFAULT_LONGITUDE
         loc = location_code or settings.DEFAULT_CITY_CODE
@@ -119,6 +125,7 @@ class WeatherClient:
                 "precipitation_sum,wind_speed_10m_max,sunrise,sunset"
             ),
             "forecast_days": 7,
+            "past_days": max(0, min(past_days, 92)),
         }
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             resp = await client.get(f"{self.base_url}/forecast", params=params)
@@ -153,10 +160,15 @@ class WeatherClient:
 
     @staticmethod
     def _parse_daily(d: dict[str, Any]) -> list[DailyForecast]:
+        from datetime import date as _date
+
         dates = d.get("time", [])
         out: list[DailyForecast] = []
+        today_str = _date.today().isoformat()
         for i, date in enumerate(dates):
             wmo = _idx(d.get("weather_code"), i)
+            # 日期 <= 今天 视为「实测/历史」，> 今天 视为「预报」
+            is_forecast = date > today_str
             out.append(
                 DailyForecast(
                     date=date,
@@ -168,6 +180,7 @@ class WeatherClient:
                     weather_desc=WMO_CODE_DESC.get(wmo) if wmo is not None else None,
                     sunrise=_idx(d.get("sunrise"), i),
                     sunset=_idx(d.get("sunset"), i),
+                    is_forecast=is_forecast,
                 )
             )
         return out

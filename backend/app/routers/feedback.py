@@ -4,6 +4,7 @@
 管理员可看全部并流转状态（Day 3 先做基础鉴权，细粒度权限后续完善）。
 """
 
+from datetime import datetime, timezone
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -14,6 +15,7 @@ from app.core.deps import CurrentUser, OptionalUser
 from app.core.response import success
 from app.db.session import get_db
 from app.models.feedback import Feedback
+from app.models.user import User
 from app.schemas.feedback import FeedbackCreate, FeedbackOut, FeedbackUpdate
 
 router = APIRouter(prefix="/api/v1/feedback", tags=["用户反馈"])
@@ -43,23 +45,25 @@ async def list_feedback(
     status_filter: str | None = None,
 ) -> dict:
     # 普通用户只看自己的；管理员看全部
-    stmt = select(Feedback)
+    stmt = select(Feedback, User.username).outerjoin(User, User.id == Feedback.user_id)
+    conditions = []
     if current.role != "admin":
-        stmt = stmt.where(Feedback.user_id == current.id)
+        conditions.append(Feedback.user_id == current.id)
     if status_filter:
-        stmt = stmt.where(Feedback.status == status_filter)
-    total = await db.scalar(select(func.count()).select_from(stmt.subquery()))
-    rows = await db.scalars(
+        conditions.append(Feedback.status == status_filter)
+    # count 基于 feedback 行
+    total = await db.scalar(
+        select(func.count()).select_from(Feedback).where(*conditions)
+    ) or 0
+    rows = await db.execute(
         stmt.order_by(Feedback.id.desc()).offset((page - 1) * page_size).limit(page_size)
     )
-    return success(
-        {
-            "items": [FeedbackOut.model_validate(f).model_dump() for f in rows],
-            "total": total or 0,
-            "page": page,
-            "page_size": page_size,
-        }
-    )
+    items = []
+    for fb, uname in rows:
+        d = FeedbackOut.model_validate(fb).model_dump()
+        d["username"] = uname or None
+        items.append(d)
+    return success({"items": items, "total": total, "page": page, "page_size": page_size})
 
 
 @router.get("/{fb_id}", response_model=dict)
@@ -81,8 +85,14 @@ async def update_feedback(
     fb = await db.get(Feedback, fb_id)
     if fb is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="反馈不存在")
-    for field, value in payload.model_dump(exclude_unset=True).items():
+    data = payload.model_dump(exclude_unset=True)
+    # 只有管理员可回复/改状态
+    if current.role != "admin" and ("reply" in data or "status" in data):
+        raise HTTPException(status_code=403, detail="无权回复或修改状态")
+    for field, value in data.items():
         setattr(fb, field, value)
+    if "reply" in data and data["reply"]:
+        fb.reply_at = datetime.now(timezone.utc)
     await db.commit()
     await db.refresh(fb)
     return success(FeedbackOut.model_validate(fb).model_dump(), message="更新成功")

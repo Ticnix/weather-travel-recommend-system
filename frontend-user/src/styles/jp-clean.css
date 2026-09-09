@@ -1,0 +1,137 @@
+/* ============ 日式简洁主题（Japanese Clean / 間） ============
+ * 设计语言：纸感米白底 + 大留白 + 柔和点缀色 + 克制阴影
+ * 主点缀色（低饱和、小面积使用）：
+ *   靛蓝 indigo #3b5b8c / 朱红 vermilion #d9543f
+ *   苔绿 moss #5a7d5a / 樱粉 sakura #e3a7ad / 琥珀 amber #d99a4e
+ * 避免：纯黑纯白、霓虹、发光、玻璃拟态、网格背景
+ */
+
+:root {
+  /* 纸感底色（非纯白） */
+  --jp-bg: #f5f3ee;          /* 米白纸 */
+  --jp-bg-2: #efece4;        /* 略深米 */
+  --jp-panel: #fffdf9;       /* 卡片纸白 */
+  --jp-panel-2: #f9f7f1;     /* 次级卡片 */
+
+  --jp-border: #e6e1d6;      /* 柔和边线 */
+  --jp-border-strong: #d8d1c2;
+
+  /* 文字（非纯黑） */
+  --jp-ink: #2e2b26;         /* 墨色 */
+  --jp-ink-2: #6b665c;       /* 次级文字 */
+  --jp-ink-3: #9a9488;       /* 弱化文字 */
+
+  /* 点缀色（低饱和，克制） */
+  --jp-indigo: #3b5b8c;
+  --jp-vermilion: #d9543f;
+  --jp-moss: #5a7d5a;
+  --jp-sakura: #e3a7ad;
+  --jp-amber: #d99a4e;
+  --jp-sky: #7aa6c2;
+
+  /* 柔和阴影（非发光） */
+  --jp-shadow-sm: 0 1px 2px rgba(46, 43, 38, 0.04);
+  --jp-shadow: 0 2px 10px rgba(46, 43, 38, 0.06);
+  --jp-shadow-md: 0 6px 24px rgba(46, 43, 38, 0.08);
+
+  --jp-radius: 16px;
+  --jp-radius-sm: 10px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+}
+
+body {
+  background-color: var(--jp-bg);
+  /* 极淡纸纹：单一暖色微噪，不抢戏 */
+  background-image: radial-gradient(
+    circle at 12% 8%,
+    rgba(227, 167, 173, 0.05) 0%,
+    transparent 45%
+  );
+  color: var(--jp-ink);
+  font-family: 'Noto Sans SC', 'Hiragino Sans', 'Hiragino Kaku Gothic ProN',
+    'PingFang SC', 'Microsoft YaHei', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  line-height: 1.7;
+}
+
+/* 衬线标题（和风质感） */
+.jp-serif {
+  font-family: 'Noto Serif SC', 'Songti SC', 'SimSun', serif;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+/* 柔和卡片（纸感，轻边 + 极淡阴影，无玻璃无发光） */
+.jp-card {
+  background: var(--jp-panel);
+  border: 1px solid var(--jp-border);
+  border-radius: var(--jp-radius);
+  box-shadow: var(--jp-shadow);
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.jp-card:hover {
+  box-shadow: var(--jp-shadow-md);
+  border-color: var(--jp-border-strong);
+}
+
+/* 小标签 / chip */
+.jp-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  background: var(--jp-panel-2);
+  border: 1px solid var(--jp-border);
+  color: var(--jp-ink-2);
+}
+
+/* 滚动条克制化 */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--jp-border-strong);
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--jp-ink-3);
+}
+
+/* antd 在浅色下的细节覆盖 */
+.ant-card {
+  background: var(--jp-panel) !important;
+  border-color: var(--jp-border) !important;
+  color: var(--jp-ink);
+}
+.ant-menu-light .ant-menu-item-selected {
+  color: var(--jp-indigo) !important;
+  font-weight: 600;
+}
+
+/* 横向滑动容器：隐藏滚动条，保留滑动（触摸/拖拽/Shift+滚轮） */
+.jp-hide-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.jp-hide-scrollbar::-webkit-scrollbar {
+  display: none;
+}

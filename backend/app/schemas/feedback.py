@@ -21,6 +21,7 @@ class FeedbackUpdate(BaseModel):
     content: Optional[str] = None
     contact: Optional[str] = None
     status: Optional[str] = None
+    reply: Optional[str] = None
 
 
 class FeedbackOut(FeedbackBase):
@@ -28,5 +29,7 @@ class FeedbackOut(FeedbackBase):
 
     id: int
     user_id: Optional[int] = None
+    reply: Optional[str] = None
+    reply_at: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime

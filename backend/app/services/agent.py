@@ -124,13 +124,22 @@ async def _classify_intent(state: AgentState) -> dict:
                 ("human", user_text),
             ]
         )
-        intent = (resp.content if isinstance(resp.content, str) else str(resp.content)).strip()
+        raw = (resp.content if isinstance(resp.content, str) else str(resp.content)).strip()
+        intent = ""
         for label in ("weather", "outfit", "travel", "knowledge", "other"):
-            if label in intent.lower():
+            if label in raw.lower():
                 intent = label
                 break
-        else:
-            intent = "other"
+        # 关键词规则作为兜底：当 LLM 未返回明确工具意图（含 other / 空 / 中文解释）时，
+        # 若用户输入明显指向某类意图（含"天气/穿/出行"等强词），则覆盖为对应意图，
+        # 避免明确的天气/穿搭/出行问题被误判为 other 而不绑定工具。
+        kw = _keyword_intent(user_text)
+        if intent not in ("weather", "outfit", "travel", "knowledge") or (
+            intent == "other" and kw != "other"
+        ):
+            if kw != "other":
+                intent = kw
+        logger.info("意图识别 raw=[%s] -> %s", raw[:60], intent)
     except Exception as exc:  # noqa: BLE001 LLM 失败降级到关键词
         logger.warning("意图识别 LLM 调用失败，降级到关键词规则: %s", exc)
         intent = _keyword_intent(user_text)
