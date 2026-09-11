@@ -94,6 +94,25 @@ _INTENT_KEYWORDS: dict[str, tuple[str, ...]] = {
     "knowledge": ("景点", "美食", "好吃", "好玩", "攻略", "推荐", "酒店", "住宿", "历史", "文化"),
 }
 
+# 强关键词预判表（命中即直接定意图，不再调用 LLM 分类）
+# 说明：仅收录「高置信、歧义小」的词，避免把闲聊误判为工具意图；
+#       弱词（如「去」「推荐」）仍只作为 LLM 分类失败时的兜底。
+_STRONG_INTENT_KEYWORDS: dict[str, tuple[str, ...]] = {
+    "weather": (
+        "天气", "气温", "多少度", "几度", "下雨", "降雨", "晴天", "阴天",
+        "台风", "降水", "湿度", "预报", "冷吗", "热吗",
+    ),
+    "outfit": ("穿搭", "穿什么", "怎么穿", "该穿", "穿衣服", "着装", "穿多少", "穿鞋"),
+    "travel": (
+        "路线", "怎么走", "怎么去", "出行", "交通", "地铁", "公交", "驾车",
+        "开车", "打车", "行程", "多远", "多久能到", "怎么到达",
+    ),
+    "knowledge": (
+        "景点", "美食", "好吃", "好玩", "攻略", "酒店", "住宿",
+        "特产", "历史", "文化", "哪里玩", "哪里吃",
+    ),
+}
+
 
 class AgentState(TypedDict):
     """会话状态。messages 用 add_messages 做累加合并。"""
@@ -105,7 +124,7 @@ class AgentState(TypedDict):
 
 
 def _keyword_intent(text: str) -> str:
-    """关键词规则兜底：LLM 意图识别失败时使用。"""
+    """关键词规则兜底（弱词）：LLM 意图识别失败时使用。"""
     for label, keywords in _INTENT_KEYWORDS.items():
         for kw in keywords:
             if kw in text:
@@ -113,9 +132,32 @@ def _keyword_intent(text: str) -> str:
     return "other"
 
 
+def _strong_keyword_intent(text: str) -> str | None:
+    """强关键词预判：命中即视为高置信意图，未命中返回 None。
+
+    背景：HTTP 层 /api/v1/chat 曾出现意图识别稳定返回 other 的问题
+    （直接调用 chat() 却正常），根因是 LLM 分类输出不稳定。
+    因此对高置信关键词直接定意图，不依赖 LLM 分类稳定性，
+    顺带省掉一次 LLM 调用（省 token、降延迟）。
+    """
+    for label, keywords in _STRONG_INTENT_KEYWORDS.items():
+        for kw in keywords:
+            if kw in text:
+                return label
+    return None
+
+
 async def _classify_intent(state: AgentState) -> dict:
-    """意图识别节点：优先 LLM，失败降级到关键词规则。"""
+    """意图识别节点：强关键词预判 > LLM 分类 > 弱关键词兜底。"""
     user_text = state["messages"][-1].content
+
+    # 1) 强关键词预判：高置信命中直接定意图，跳过 LLM 分类
+    pre = _strong_keyword_intent(user_text)
+    if pre:
+        logger.info("强关键词预判命中: %s（用户：%s）", pre, user_text)
+        return {"intent": pre}
+
+    # 2) 未命中强词：调用 LLM 分类，失败则弱关键词兜底
     llm = get_llm()
     try:
         resp = await llm.ainvoke(

@@ -1,16 +1,36 @@
-import { ConfigProvider, theme } from 'antd'
+import { lazy, Suspense } from 'react'
+import { ConfigProvider, Spin, theme } from 'antd'
 import zhCN from 'antd/locale/zh_CN'
 import { BrowserRouter, Route, Routes } from 'react-router-dom'
 import MainLayout from './layouts/MainLayout'
-import Home from './pages/Home'
-import Chat from './pages/Chat'
-import News from './pages/News'
-import NewsDetail from './pages/NewsDetail'
-import Feedback from './pages/Feedback'
-import Recommend from './pages/Recommend'
-import Profile from './pages/Profile'
-import Login from './pages/Login'
 import Placeholder from './pages/Placeholder'
+
+// 路由级懒加载：各页面独立拆包，首屏只加载当前页面所需 chunk，
+// 显著降低首屏 JS 体积（原实现为静态导入，所有页面打进一个 bundle）
+const Home = lazy(() => import('./pages/Home'))
+const Chat = lazy(() => import('./pages/Chat'))
+const News = lazy(() => import('./pages/News'))
+const NewsDetail = lazy(() => import('./pages/NewsDetail'))
+const Feedback = lazy(() => import('./pages/Feedback'))
+const Recommend = lazy(() => import('./pages/Recommend'))
+const Profile = lazy(() => import('./pages/Profile'))
+const Login = lazy(() => import('./pages/Login'))
+
+// 懒加载兜底：页面 chunk 下载期间展示居中 loading，避免白屏
+function PageLoading() {
+  return (
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        minHeight: '45vh',
+      }}
+    >
+      <Spin size="large" />
+    </div>
+  )
+}
 
 function App() {
   return (
@@ -70,7 +90,8 @@ function App() {
       }}
     >
       <BrowserRouter>
-        <Routes>
+        <Suspense fallback={<PageLoading />}>
+          <Routes>
           <Route path="/login" element={<Login />} />
           <Route element={<MainLayout />}>
             <Route path="/" element={<Home />} />
@@ -87,7 +108,8 @@ function App() {
               }
             />
           </Route>
-        </Routes>
+          </Routes>
+        </Suspense>
       </BrowserRouter>
     </ConfigProvider>
   )

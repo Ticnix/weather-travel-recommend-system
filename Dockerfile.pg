@@ -1,7 +1,12 @@
 # 基于 pgvector/pgvector:pg17（Debian bookworm，自带 pgvector）
-# 通过 PGDG + TimescaleDB APT 源补齐 postgis 与 timescaledb，凑齐三大扩展
+# 通过 TimescaleDB APT 源 + PGDG 源补齐 timescaledb 与 postgis，凑齐三大扩展
+#
+# 构建要点：
+#   1. 拆成多个 RUN 层：网络失败重试时可复用已成功层的缓存，不必从头再来
+#   2. GPG key 下载内置重试：packagecloud.io 偶发不可达会导致整次构建失败
 FROM pgvector/pgvector:pg17
 
+# 1) 基础工具（apt-transport-https / gnupg / wget / ca-certificates）
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         gnupg \
@@ -9,12 +14,32 @@ RUN apt-get update \
         apt-transport-https \
         wget \
         ca-certificates \
-    && wget --quiet -O - https://packagecloud.io/timescale/timescaledb/gpgkey \
-        | gpg --dearmor -o /etc/apt/trusted.gpg.d/timescaledb.gpg \
-    && echo "deb https://packagecloud.io/timescale/timescaledb/debian/ $(lsb_release -c -s) main" \
-        > /etc/apt/sources.list.d/timescaledb.list \
-    && apt-get update \
+    && rm -rf /var/lib/apt/lists/*
+
+# 2) 导入 TimescaleDB GPG 公钥（失败自动重试，最多 5 次）
+RUN set -eux; \
+    for i in 1 2 3 4 5; do \
+        wget --tries=3 --timeout=30 --quiet -O /tmp/timescaledb.gpg \
+            https://packagecloud.io/timescale/timescaledb/gpgkey \
+        && break || sleep 5; \
+    done; \
+    test -s /tmp/timescaledb.gpg; \
+    gpg --dearmor -o /etc/apt/trusted.gpg.d/timescaledb.gpg /tmp/timescaledb.gpg
+
+# 3) 添加 TimescaleDB APT 源
+RUN echo "deb https://packagecloud.io/timescale/timescaledb/debian/ $(lsb_release -c -s) main" \
+        > /etc/apt/sources.list.d/timescaledb.list
+
+# 4) 安装 timescaledb（来自 TimescaleDB 源）与 postgis（来自 PGDG 源）
+RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         timescaledb-2-postgresql-17 \
         postgresql-17-postgis-3 \
     && rm -rf /var/lib/apt/lists/*
+
+# 5) 预加载 timescaledb
+#    必须先写入 shared_preload_libraries，否则 CREATE EXTENSION timescaledb 会失败；
+#    而初始化脚本一旦在第一步失败就会中止，导致 vector / postgis 也建不出来。
+#    修改 conf sample 后，官方 entrypoint 初始化新数据目录时会带上该配置。
+RUN echo "shared_preload_libraries = 'timescaledb'" \
+        >> /usr/share/postgresql/17/postgresql.conf.sample

@@ -1,3 +1,15 @@
+# 一键拉起整套业务系统：PostgreSQL(TimescaleDB+PostGIS+pgvector) / Redis /
+# FastAPI 后端 / Celery worker / 用户端 Nginx / 管理端 Nginx
+#
+# 用法：
+#   docker compose up -d --build     # 首次或代码变更后
+#   docker compose ps                # 查看各服务状态
+#   docker compose logs -f backend   # 跟踪后端日志
+#
+# 访问地址：
+#   用户端     http://localhost:8080
+#   管理端     http://localhost:8081
+#   后端 API   http://localhost:8000/docs
 services:
   postgres:
     build:
@@ -13,15 +25,52 @@ services:
       - "5432:5432"
     volumes:
       - pg_data:/var/lib/postgresql/data
+      # 初始化脚本：自动启用 timescaledb / vector / postgis 三大扩展
+      - ./docker-entrypoint-initdb.d:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d weather_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
 
   redis:
     image: redis:7.2-alpine
     container_name: weather-redis
     ports:
       - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
 
-  # Celery worker：处理清洗 / 气象同步 / 知识库索引等异步任务
-  # 依赖 postgres / redis，随 docker compose up 自动启动，无需手动拉起
+  # FastAPI 后端
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: weather-backend:latest
+    container_name: weather-backend
+    working_dir: /app
+    env_file:
+      - ./backend/.env
+    environment:
+      # 容器内需用 compose 服务名互访，覆盖 .env 中本地开发的 127.0.0.1
+      DB_URL: postgresql+asyncpg://admin:123456@postgres:5432/weather_db
+      REDIS_URL: redis://redis:6379/0
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Celery worker：清洗 / 气象同步 / 知识库索引等异步任务
   celery:
     build:
       context: ./backend
@@ -31,10 +80,41 @@ services:
     working_dir: /app
     env_file:
       - ./backend/.env
+    environment:
+      DB_URL: postgresql+asyncpg://admin:123456@postgres:5432/weather_db
+      REDIS_URL: redis://redis:6379/0
     command: celery -A app.celery_app worker -l info
     depends_on:
-      - postgres
-      - redis
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # 用户端（React19 + Vite，Nginx 托管静态资源并代理 /api）
+  frontend-user:
+    build:
+      context: ./frontend-user
+      dockerfile: Dockerfile
+    image: weather-frontend-user:latest
+    container_name: weather-frontend-user
+    ports:
+      - "8080:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  # 管理端（Vue3 + Vite）
+  frontend-admin:
+    build:
+      context: ./frontend-admin
+      dockerfile: Dockerfile
+    image: weather-frontend-admin:latest
+    container_name: weather-frontend-admin
+    ports:
+      - "8081:80"
+    depends_on:
+      - backend
     restart: unless-stopped
 
 volumes:

@@ -1,11 +1,25 @@
 <script setup lang="ts">
 import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
-import * as echarts from 'echarts'
+import * as echarts from 'echarts/core'
+import type { ECharts } from 'echarts/core'
+import { BarChart, LineChart } from 'echarts/charts'
+import { GridComponent, LegendComponent, TooltipComponent } from 'echarts/components'
+import { CanvasRenderer } from 'echarts/renderers'
 import { weatherStats, type DailyAgg } from '../api/weather'
+
+// 按需注册：只打包用到的图表与组件，避免把整个 ECharts 打进 chunk
+echarts.use([
+  LineChart,
+  BarChart,
+  GridComponent,
+  TooltipComponent,
+  LegendComponent,
+  CanvasRenderer,
+])
 
 const chartEl = ref<HTMLDivElement | null>(null)
 const days = ref(30)
-let chart: echarts.ECharts | null = null
+let chart: ECharts | null = null
 
 async function render() {
   const res = await weatherStats(days.value)

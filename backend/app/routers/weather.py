@@ -5,6 +5,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.cache import cached
 from app.core.deps import CurrentUser
 from app.core.response import success
 from app.db.session import get_db
@@ -82,11 +83,20 @@ async def current_weather(
     db: Annotated[AsyncSession, Depends(get_db)],
     location: str = "gz",
 ) -> dict:
-    """获取最新实测天气（公开）。"""
-    latest = await weather_sync.get_latest(location)
-    if latest is None:
+    """获取最新实测天气（公开）。
+
+    高频读接口：接 Redis 缓存（5 分钟）降低数据库压力，
+    Redis 不可用时自动降级为直查数据库。
+    """
+
+    async def _load() -> dict | None:
+        latest = await weather_sync.get_latest(location)
+        return _to_out(latest) if latest is not None else None
+
+    data = await cached(f"weather:current:{location}", 300, _load)
+    if data is None:
         return success(None, message="暂无数据，请先同步")
-    return success(_to_out(latest))
+    return success(data)
 
 
 @router.get("/forecast", response_model=dict)
@@ -94,9 +104,17 @@ async def forecast(
     db: Annotated[AsyncSession, Depends(get_db)],
     location: str = "gz",
 ) -> dict:
-    """获取 7 天预报（公开）。"""
-    rows = await weather_sync.list_forecast(location)
-    return success({"items": [_to_out(r) for r in rows], "total": len(rows)})
+    """获取 7 天预报（公开）。
+
+    预报一天内变化不大，缓存 30 分钟；Redis 不可用时自动降级。
+    """
+
+    async def _load() -> dict:
+        rows = await weather_sync.list_forecast(location)
+        return {"items": [_to_out(r) for r in rows], "total": len(rows)}
+
+    data = await cached(f"weather:forecast:{location}", 1800, _load)
+    return success(data)
 
 
 @router.get("/history", response_model=dict)

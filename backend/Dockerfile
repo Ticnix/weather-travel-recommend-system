@@ -13,5 +13,5 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-# 默认命令由 docker-compose 的 command 覆盖
-CMD ["python", "-m", "app.main"]
+# 启动 FastAPI（app.main 无 __main__ 入口，必须显式用 uvicorn）
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
