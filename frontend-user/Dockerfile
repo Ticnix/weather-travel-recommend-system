@@ -4,7 +4,8 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 COPY package*.json ./
-RUN npm install
+# 使用国内 npm 镜像加速（如需切回官方源，去掉 --registry 参数即可）
+RUN npm install --registry=https://registry.npmmirror.com
 COPY . .
 RUN npm run build
 
