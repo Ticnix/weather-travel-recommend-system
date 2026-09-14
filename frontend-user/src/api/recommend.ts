@@ -75,6 +75,40 @@ export async function recommendOutfit(
   })
 }
 
+// ===== 穿搭灵感（社交平台真实搭配参考） =====
+export interface OutfitPost {
+  title: string
+  url: string
+  platform: string // 抖音 / 小红书 / 微博 / B站 / 知乎 / 网页
+  snippet: string
+  score?: number
+}
+
+export interface OutfitPortal {
+  platform: string
+  title: string
+  url: string
+}
+
+export interface OutfitIdeas {
+  keyword: string
+  season: string
+  posts: OutfitPost[]
+  portals: OutfitPortal[]
+  engine: string
+}
+
+// 穿搭灵感：独立接口，前端可先渲染规则建议再异步加载（搜索耗时数秒）
+export async function getOutfitPosts(
+  city?: string,
+  scene?: string,
+  preference?: string,
+): Promise<OutfitIdeas> {
+  return http.get('/recommend/outfit/posts', {
+    params: { city: city ?? undefined, scene: scene ?? undefined, preference: preference ?? undefined },
+  })
+}
+
 // ===== 今日天气概要（推荐页标题用） =====
 export interface WeatherHead {
   temperature: number | null

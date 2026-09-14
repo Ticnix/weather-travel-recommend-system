@@ -23,9 +23,11 @@ import {
   RightOutlined,
 } from '@ant-design/icons'
 import {
+  getOutfitPosts,
   getWeatherHead,
   recommendOutfit,
   recommendTravel,
+  type OutfitIdeas,
   type OutfitResult,
   type TravelResult,
   type WeatherHead,
@@ -87,6 +89,9 @@ export default function Recommend() {
   const [pref, setPref] = useState<string | null>(null)
   const [outfitLoading, setOutfitLoading] = useState(false)
   const [outfit, setOutfit] = useState<OutfitResult | null>(null)
+  // 穿搭灵感（社交平台内容）：独立加载，避免联网搜索拖慢规则建议
+  const [ideas, setIdeas] = useState<OutfitIdeas | null>(null)
+  const [ideasLoading, setIdeasLoading] = useState(false)
 
   useEffect(() => {
     getWeatherHead().then(setHead).catch(() => {})
@@ -160,11 +165,21 @@ export default function Recommend() {
 
   const loadOutfit = async () => {
     setOutfitLoading(true)
+    setIdeas(null)
+    setIdeasLoading(true)
     try {
       const res = await recommendOutfit('广州', scene ?? undefined, pref ?? undefined)
       setOutfit(res)
     } finally {
       setOutfitLoading(false)
+    }
+    // 灵感放在建议渲染之后单独拉取：它要联网搜索，耗时数秒
+    try {
+      setIdeas(await getOutfitPosts('广州', scene ?? undefined, pref ?? undefined))
+    } catch {
+      setIdeas(null)
+    } finally {
+      setIdeasLoading(false)
     }
   }
 
@@ -557,6 +572,100 @@ export default function Recommend() {
                     </div>
                   )
                 })}
+              </div>
+
+              {/* 穿搭灵感：社交平台真实搭配参考 */}
+              <div className="jp-card" style={{ padding: 20 }}>
+                <div style={{ marginBottom: 12 }}>
+                  <span className="jp-serif" style={{ fontSize: 15, fontWeight: 700, color: 'var(--jp-indigo)' }}>
+                    ✨ 穿搭灵感
+                  </span>
+                  {ideas?.keyword ? (
+                    <Text
+                      style={{ fontSize: 12, color: 'var(--jp-ink-3)', marginLeft: 8 }}
+                    >
+                      为你搜「{ideas.keyword}」
+                    </Text>
+                  ) : null}
+                </div>
+
+                {ideasLoading ? (
+                  <Skeleton active paragraph={{ rows: 3 }} />
+                ) : (
+                  <>
+                    {ideas?.posts?.length ? (
+                      <div
+                        style={{
+                          display: 'grid',
+                          gridTemplateColumns: 'repeat(auto-fill,minmax(280px,1fr))',
+                          gap: 12,
+                        }}
+                      >
+                        {ideas.posts.map((p) => (
+                          <a
+                            key={p.url}
+                            href={p.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="jp-card"
+                            style={{ padding: 14, display: 'block', textDecoration: 'none' }}
+                          >
+                            <Tag
+                              color={p.platform === '抖音' ? 'magenta' : 'blue'}
+                              style={{ margin: '0 0 6px' }}
+                            >
+                              {p.platform}
+                            </Tag>
+                            <div
+                              style={{
+                                color: 'var(--jp-ink)',
+                                fontSize: 13.5,
+                                fontWeight: 600,
+                                lineHeight: 1.5,
+                              }}
+                            >
+                              {p.title}
+                            </div>
+                            {p.snippet ? (
+                              <Paragraph
+                                style={{ margin: '6px 0 0', color: 'var(--jp-ink-2)', fontSize: 12 }}
+                                ellipsis={{ rows: 2 }}
+                              >
+                                {p.snippet}
+                              </Paragraph>
+                            ) : null}
+                          </a>
+                        ))}
+                      </div>
+                    ) : (
+                      <Text style={{ color: 'var(--jp-ink-2)', fontSize: 13 }}>
+                        暂时没搜到合适的搭配内容，可以从下方平台入口直接浏览。
+                      </Text>
+                    )}
+
+                    {/* 平台搜索直达：小红书站内笔记搜不到，但搜索页可直接打开 */}
+                    {ideas?.portals?.length ? (
+                      <div style={{ marginTop: 14 }}>
+                        <Text style={{ color: 'var(--jp-ink-3)', fontSize: 12, marginRight: 8 }}>
+                          去平台看更多
+                        </Text>
+                        <Space wrap size={[8, 8]}>
+                          {ideas.portals.map((pt) => (
+                            <Button
+                              key={pt.platform}
+                              size="small"
+                              href={pt.url}
+                              target="_blank"
+                              rel="noreferrer"
+                            >
+                              {pt.platform}
+                            </Button>
+                          ))}
+                        </Space>
+                      </div>
+                    ) : null}
+                  </>
+                )}
               </div>
             </>
           ) : null}

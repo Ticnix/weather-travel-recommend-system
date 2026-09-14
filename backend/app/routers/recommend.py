@@ -9,7 +9,9 @@ from typing import Optional
 
 from fastapi import APIRouter, Query
 
+from app.core.cache import cached
 from app.core.response import success
+from app.services import outfit_inspiration
 from app.services.weather_service import fetch_weather
 from skills.outfit_recommend.scripts import outfit_engine
 from skills.travel_planning.scripts import route_planner
@@ -54,6 +56,38 @@ async def recommend_outfit(
 ) -> dict:
     """穿搭推荐：返回当日气象参数 + 匹配的穿搭规则 + 知识库参考。"""
     data = await outfit_engine.outfit_structured(city, scene, preference)
+    return success(data=data)
+
+
+@router.get("/outfit/posts", response_model=dict)
+async def outfit_posts(
+    city: Optional[str] = Query(None, description="城市，默认广州"),
+    scene: Optional[str] = Query(None, description="出行场景：爬山/逛街/商务等"),
+    preference: Optional[str] = Query(None, description="个人偏好"),
+) -> dict:
+    """穿搭灵感：社交平台（抖音为主）的真实搭配参考 + 各平台搜索直达入口。
+
+    与 `/outfit` 拆开是因为联网搜索耗时较长（数秒），
+    前端可以先渲染规则建议、再异步加载这一块，避免整体变慢。
+
+    小红书对搜索引擎屏蔽，站内笔记拿不到，因此改为提供其搜索页直达链接。
+    结果按（城市, 场景, 偏好）缓存 30 分钟，避免反复消耗搜索额度。
+    """
+    cache_key = f"outfit:posts:{city}:{scene}:{preference}"
+
+    async def _load() -> dict:
+        # 先取当前天气参数，让搜索词贴合「当下这个温度」该穿什么
+        outfit = await outfit_engine.outfit_structured(city, scene, preference)
+        weather = outfit.get("weather", {})
+        return await outfit_inspiration.fetch_outfit_ideas(
+            city=city or "广州",
+            scene=scene,
+            preference=preference,
+            temp=float(weather.get("temp") or 25),
+            weather_desc=weather.get("desc") or "",
+        )
+
+    data = await cached(cache_key, 1800, _load)
     return success(data=data)
 
 
