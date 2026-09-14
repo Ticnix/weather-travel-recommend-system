@@ -99,6 +99,44 @@ async def get_itinerary_by_date(
     return await _run(session)
 
 
+async def update_itinerary(
+    user_id: int,
+    item_id: int,
+    fields: dict[str, Any],
+    db: AsyncSession | None = None,
+) -> dict[str, Any] | None:
+    """更新用户某条行程（只更新传入字段）；行程不存在或不属于该用户时返回 None。"""
+    if "date" in fields and fields["date"]:
+        if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", str(fields["date"])):
+            raise ValueError("日期格式应为 YYYY-MM-DD")
+
+    owns_db = db is None
+    session = db or AsyncSessionLocal()
+
+    async def _run(s: AsyncSession) -> dict[str, Any] | None:
+        item = await s.get(Itinerary, item_id)
+        if item is None or item.user_id != user_id:
+            return None
+        for key, value in fields.items():
+            setattr(item, key, value)
+        await s.commit()
+        await s.refresh(item)
+        return {
+            "id": item.id,
+            "title": item.title,
+            "date": item.date,
+            "start_time": item.start_time,
+            "location": item.location,
+            "activity": item.activity,
+            "note": item.note,
+        }
+
+    if owns_db:
+        async with session as s:
+            return await _run(s)
+    return await _run(session)
+
+
 async def delete_itinerary(user_id: int, item_id: int, db: AsyncSession | None = None) -> int:
     """删除用户某条行程（按 id），返回删除条数。"""
     owns_db = db is None

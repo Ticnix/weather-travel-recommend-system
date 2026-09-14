@@ -29,6 +29,14 @@ export async function createItinerary(payload: ItineraryCreatePayload): Promise<
   return http.post('/itinerary', payload)
 }
 
+// 更新行程（只提交需要改的字段）
+export async function updateItinerary(
+  id: number,
+  payload: Partial<ItineraryCreatePayload>,
+): Promise<ItineraryItem> {
+  return http.put(`/itinerary/${id}`, payload)
+}
+
 // 删除行程
 export async function deleteItinerary(id: number): Promise<{ deleted: number }> {
   return http.delete(`/itinerary/${id}`)

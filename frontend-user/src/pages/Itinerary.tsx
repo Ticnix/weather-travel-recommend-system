@@ -8,6 +8,7 @@ import {
   Input,
   Modal,
   Popconfirm,
+  Segmented,
   Skeleton,
   Space,
   Tag,
@@ -18,17 +19,20 @@ import {
   CalendarOutlined,
   CommentOutlined,
   DeleteOutlined,
+  EditOutlined,
   EnvironmentOutlined,
   PlusOutlined,
 } from '@ant-design/icons'
-import type { Dayjs } from 'dayjs'
+import dayjs, { type Dayjs } from 'dayjs'
 import { isLoggedIn } from '../api/auth'
 import {
   createItinerary,
   deleteItinerary,
   listItinerary,
+  updateItinerary,
   type ItineraryItem,
 } from '../api/itinerary'
+import NotePanel from '../components/NotePanel'
 
 const { Paragraph, Text } = Typography
 
@@ -39,6 +43,10 @@ export default function Itinerary() {
   const [open, setOpen] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [form] = Form.useForm()
+  // 视图切换：结构化行程（用于天气提醒）/ 自由笔记（攻略、清单）
+  const [view, setView] = useState<'plan' | 'note'>('plan')
+  // 正在编辑的行程 id；null 表示新增
+  const [editingId, setEditingId] = useState<number | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -60,21 +68,29 @@ export default function Itinerary() {
     }
   }, [load])
 
-  const handleCreate = async () => {
+  // 新增 / 编辑共用：editingId 有值即为编辑
+  const handleSubmit = async () => {
     try {
       const values = await form.validateFields()
       setSubmitting(true)
-      await createItinerary({
+      const payload = {
         title: values.title,
         date: (values.date as Dayjs).format('YYYY-MM-DD'),
         start_time: values.start_time || undefined,
         location: values.location || undefined,
         activity: values.activity || undefined,
         note: values.note || undefined,
-      })
-      message.success('行程已添加')
+      }
+      if (editingId !== null) {
+        await updateItinerary(editingId, payload)
+        message.success('行程已更新')
+      } else {
+        await createItinerary(payload)
+        message.success('行程已添加')
+      }
       setOpen(false)
       form.resetFields()
+      setEditingId(null)
       await load()
     } catch (e) {
       // validateFields 失败时会抛校验错误对象，只提示业务异常
@@ -82,6 +98,20 @@ export default function Itinerary() {
     } finally {
       setSubmitting(false)
     }
+  }
+
+  // 打开编辑：把该条行程回填到表单
+  const openEdit = (it: ItineraryItem) => {
+    setEditingId(it.id)
+    form.setFieldsValue({
+      title: it.title,
+      date: dayjs(it.date),
+      start_time: it.start_time ?? '',
+      location: it.location ?? '',
+      activity: it.activity ?? '',
+      note: it.note ?? '',
+    })
+    setOpen(true)
   }
 
   const handleDelete = async (id: number) => {
@@ -131,14 +161,35 @@ export default function Itinerary() {
             <Button icon={<CommentOutlined />} onClick={() => navigate('/chat')}>
               问 AI
             </Button>
-            <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpen(true)}>
+            <Button
+              type="primary"
+              icon={<PlusOutlined />}
+              onClick={() => {
+                setEditingId(null)
+                form.resetFields()
+                setOpen(true)
+              }}
+            >
               添加行程
             </Button>
           </Space>
         </div>
+
+        {/* 视图切换：结构化行程（用于天气提醒）/ 自由笔记（攻略、清单） */}
+        <Segmented
+          value={view}
+          onChange={(v) => setView(v as 'plan' | 'note')}
+          style={{ marginTop: 14 }}
+          options={[
+            { label: '🗓️ 行程安排', value: 'plan' },
+            { label: '📝 行程笔记', value: 'note' },
+          ]}
+        />
       </div>
 
-      {loading ? (
+      {view === 'note' ? (
+        <NotePanel />
+      ) : loading ? (
         <div className="jp-card" style={{ padding: 24 }}>
           <Skeleton active paragraph={{ rows: 4 }} />
         </div>
@@ -175,9 +226,12 @@ export default function Itinerary() {
                     </Paragraph>
                   )}
                 </div>
-                <Popconfirm title="确定删除这条行程？" onConfirm={() => handleDelete(it.id)}>
-                  <Button type="text" danger icon={<DeleteOutlined />} />
-                </Popconfirm>
+                <Space size={2}>
+                  <Button type="text" icon={<EditOutlined />} onClick={() => openEdit(it)} />
+                  <Popconfirm title="确定删除这条行程？" onConfirm={() => handleDelete(it.id)}>
+                    <Button type="text" danger icon={<DeleteOutlined />} />
+                  </Popconfirm>
+                </Space>
               </div>
             </div>
           ))}
@@ -185,10 +239,13 @@ export default function Itinerary() {
       )}
 
       <Modal
-        title="添加行程"
+        title={editingId !== null ? '编辑行程' : '添加行程'}
         open={open}
-        onCancel={() => setOpen(false)}
-        onOk={handleCreate}
+        onCancel={() => {
+          setOpen(false)
+          setEditingId(null)
+        }}
+        onOk={handleSubmit}
         confirmLoading={submitting}
         okText="保存"
         cancelText="取消"

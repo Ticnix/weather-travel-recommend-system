@@ -12,3 +12,14 @@ class ItineraryCreate(BaseModel):
     location: str | None = Field(default=None, max_length=128, description="地点")
     activity: str | None = Field(default=None, max_length=64, description="活动类型，如爬山/夜游/逛街")
     note: str | None = Field(default=None, description="备注")
+
+
+class ItineraryUpdate(BaseModel):
+    """更新行程请求（字段可选，只更新传入的部分）。"""
+
+    title: str | None = Field(default=None, min_length=1, max_length=255)
+    date: str | None = Field(default=None, description="日期 YYYY-MM-DD")
+    start_time: str | None = None
+    location: str | None = Field(default=None, max_length=128)
+    activity: str | None = Field(default=None, max_length=64)
+    note: str | None = None

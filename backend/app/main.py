@@ -11,6 +11,7 @@ from app.routers import (
     itinerary,
     knowledge,
     news,
+    notes,
     places,
     recommend,
     user_knowledge,
@@ -35,6 +36,7 @@ app.include_router(itinerary.router)
 app.include_router(chat.router)
 app.include_router(recommend.router)
 app.include_router(places.router)
+app.include_router(notes.router)
 
 
 @app.get("/", tags=["系统"])

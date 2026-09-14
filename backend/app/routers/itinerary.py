@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.deps import CurrentUser
 from app.core.response import success
 from app.db.session import get_db
-from app.schemas.itinerary import ItineraryCreate
+from app.schemas.itinerary import ItineraryCreate, ItineraryUpdate
 from app.services import itinerary_service
 
 router = APIRouter(prefix="/api/v1/itinerary", tags=["行程管理"])
@@ -46,6 +46,26 @@ async def list_itinerary(
     """查询本人行程（可按 date=YYYY-MM-DD 过滤）。"""
     items = await itinerary_service.get_itinerary_by_date(current.id, date, db=db)
     return success({"items": items, "total": len(items)})
+
+
+@router.put("/{item_id}", response_model=dict)
+async def update_itinerary(
+    item_id: int,
+    payload: ItineraryUpdate,
+    current: CurrentUser,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> dict:
+    """修改本人某条行程（只更新传入字段）。"""
+    fields = payload.model_dump(exclude_unset=True)
+    if not fields:
+        raise HTTPException(status_code=400, detail="没有需要更新的字段")
+    try:
+        item = await itinerary_service.update_itinerary(current.id, item_id, fields, db=db)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if item is None:
+        raise HTTPException(status_code=404, detail="行程不存在")
+    return success(item, message="已更新")
 
 
 @router.delete("/{item_id}", response_model=dict)
