@@ -55,6 +55,10 @@ async def list_feedback(
     total = await db.scalar(
         select(func.count()).select_from(Feedback).where(*conditions)
     ) or 0
+    # ⚠️ 筛选条件必须同时作用于 rows：此前只用在 count 上，
+    # 导致普通用户能查到他人反馈（隐私问题），且 total 与实际条数不符
+    if conditions:
+        stmt = stmt.where(*conditions)
     rows = await db.execute(
         stmt.order_by(Feedback.id.desc()).offset((page - 1) * page_size).limit(page_size)
     )

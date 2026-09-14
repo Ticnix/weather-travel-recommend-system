@@ -13,6 +13,7 @@ import {
   MailOutlined,
   BulbOutlined,
 } from '@ant-design/icons'
+import { isLoggedIn } from '../api/auth'
 import { createFeedback } from '../api/feedback'
 
 const { Paragraph, Text } = Typography
@@ -32,6 +33,7 @@ export default function Feedback() {
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [done, setDone] = useState(false)
+  const loggedIn = isLoggedIn()
 
   const handleSubmit = async () => {
     if (!content.trim()) {
@@ -80,6 +82,24 @@ export default function Feedback() {
       </div>
 
       <div className="jp-card" style={{ padding: 24 }}>
+        {/* 匿名提交无法关联到账号，用户在「我的」页面就看不到回复，这里先提示 */}
+        {!loggedIn && (
+          <Alert
+            type="warning"
+            showIcon
+            style={{ marginBottom: 16 }}
+            message="当前未登录，将以匿名方式提交"
+            description="匿名反馈无法在「我的」页面查看管理员回复，建议先登录再提交。"
+            action={
+              <Button
+                size="small"
+                onClick={() => navigate('/login', { state: { from: '/feedback' } })}
+              >
+                去登录
+              </Button>
+            }
+          />
+        )}
         {error && (
           <Alert type="error" message={error} showIcon style={{ marginBottom: 16 }} />
         )}

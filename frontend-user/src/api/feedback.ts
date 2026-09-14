@@ -6,6 +6,8 @@ export interface FeedbackItem {
   contact: string | null
   status: 'pending' | 'processing' | 'resolved' | 'closed'
   user_id: number | null
+  reply: string | null // 管理员回复（此前类型缺失，导致前端拿不到/不展示）
+  reply_at: string | null // 回复时间
   created_at: string
   updated_at: string
 }

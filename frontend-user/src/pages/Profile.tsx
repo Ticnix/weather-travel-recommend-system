@@ -18,6 +18,8 @@ import {
   EditOutlined,
   SendOutlined,
   LogoutOutlined,
+  ClockCircleOutlined,
+  CommentOutlined,
 } from '@ant-design/icons'
 import { listMyFeedback, type FeedbackItem } from '../api/feedback'
 import {
@@ -161,19 +163,66 @@ export default function Profile() {
                   >
                     <Space direction="vertical" size={6} style={{ width: '100%' }}>
                       <Space style={{ width: '100%', justifyContent: 'space-between' }}>
-                        <Tag color={STATUS_META[fb.status].color}>
-                          {STATUS_META[fb.status].label}
-                        </Tag>
+                        <Space size={6}>
+                          <Tag color={STATUS_META[fb.status].color}>
+                            {STATUS_META[fb.status].label}
+                          </Tag>
+                          {fb.reply && <Tag color="green">已回复</Tag>}
+                        </Space>
                         <Text style={{ fontSize: 12, color: 'var(--jp-ink-3)' }}>
                           {fb.created_at?.slice(0, 10)}
                         </Text>
                       </Space>
-                      <Paragraph style={{ margin: 0, color: 'var(--jp-ink)' }}>
+
+                      {/* 反馈内容：长文本可点击「展开」查看全文 */}
+                      <Paragraph
+                        style={{ margin: 0, color: 'var(--jp-ink)' }}
+                        ellipsis={{ rows: 3, expandable: true, symbol: '展开' }}
+                      >
                         {fb.content}
                       </Paragraph>
+
                       {fb.contact && (
                         <Text style={{ fontSize: 12, color: 'var(--jp-ink-3)' }}>
                           联系方式：{fb.contact}
+                        </Text>
+                      )}
+
+                      {/* 管理员回复：这是用户最关心的信息，有则醒目展示 */}
+                      {fb.reply ? (
+                        <div
+                          style={{
+                            marginTop: 6,
+                            padding: '10px 14px',
+                            borderRadius: 10,
+                            background: 'rgba(90,125,90,0.09)',
+                            borderLeft: '3px solid #5a7d5a',
+                          }}
+                        >
+                          <Space size={8} style={{ marginBottom: 4 }}>
+                            <Text style={{ fontWeight: 600, color: '#5a7d5a', fontSize: 13 }}>
+                              <CommentOutlined /> 管理员回复
+                            </Text>
+                            {fb.reply_at && (
+                              <Text style={{ fontSize: 12, color: 'var(--jp-ink-3)' }}>
+                                {fb.reply_at.slice(0, 16).replace('T', ' ')}
+                              </Text>
+                            )}
+                          </Space>
+                          <Paragraph
+                            style={{
+                              margin: 0,
+                              color: 'var(--jp-ink)',
+                              whiteSpace: 'pre-wrap',
+                              fontSize: 13.5,
+                            }}
+                          >
+                            {fb.reply}
+                          </Paragraph>
+                        </div>
+                      ) : (
+                        <Text style={{ fontSize: 12, color: 'var(--jp-ink-3)' }}>
+                          <ClockCircleOutlined /> 管理员正在处理，回复后会显示在这里
                         </Text>
                       )}
                     </Space>
