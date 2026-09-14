@@ -8,6 +8,7 @@ export interface NewsItem {
   title: string
   content: string
   cover_url: string | null
+  source_url: string | null // 原文链接（有值时详情页内嵌展示原文）
   category: NewsCategory
   author: string | null
   is_top: boolean

@@ -24,7 +24,9 @@ from app.models.news import News
 logger = logging.getLogger(__name__)
 
 NMC_ALARM_URL = "http://www.nmc.cn/rest/findAlarm"
-NMC_BASE = "http://www.nmc.cn"
+# 原文链接统一用 https：详情页会以 iframe 内嵌展示原文，
+# 若用 http 会与站点的 https 冲突，被浏览器按“混合内容”拦截
+NMC_BASE = "https://www.nmc.cn"
 
 # 中央气象台会校验 UA，缺省会返回异常内容
 _HEADERS = {
@@ -109,6 +111,7 @@ async def collect_alerts(
                 title=a["title"][:200],
                 content=content,
                 cover_url=a["pic"] or None,
+                source_url=a["url"] or None,
                 category=CATEGORY_ALERT,
                 author="中央气象台",
                 is_published=True,

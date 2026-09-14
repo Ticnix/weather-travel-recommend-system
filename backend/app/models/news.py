@@ -13,7 +13,9 @@ class News(Base, TimestampMixin):
     title: Mapped[str] = mapped_column(String(200), nullable=False, index=True)
     content: Mapped[str] = mapped_column(Text, nullable=False)
     cover_url: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    category: Mapped[str] = mapped_column(String(32), default="news", nullable=False)  # news / notice
+    # 原文链接：采集类资讯（如中央气象台预警）用于详情页内嵌展示原文
+    source_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    category: Mapped[str] = mapped_column(String(32), default="news", nullable=False)  # news / notice / alert
     author: Mapped[str | None] = mapped_column(String(64), nullable=True)
     view_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     is_top: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)

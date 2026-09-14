@@ -1,16 +1,24 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { Button, Skeleton, Space, Tag, Typography, Divider } from 'antd'
+import { Alert, Button, Skeleton, Space, Tag, Typography, Divider } from 'antd'
 import {
   ArrowLeftOutlined,
   EyeOutlined,
   FireOutlined,
   UserOutlined,
   CalendarOutlined,
+  LinkOutlined,
 } from '@ant-design/icons'
 import { getNews, type NewsItem } from '../api/news'
 
 const { Title, Paragraph, Text } = Typography
+
+// 分类 → 标签颜色/文案
+const CATEGORY_TAG: Record<string, { color: string; text: string }> = {
+  notice: { color: 'magenta', text: '官方公告' },
+  alert: { color: 'red', text: '气象预警' },
+  news: { color: 'cyan', text: '气象资讯' },
+}
 
 export default function NewsDetail() {
   const { id } = useParams<{ id: string }>()
@@ -50,18 +58,29 @@ export default function NewsDetail() {
     )
   }
 
+  const tag = CATEGORY_TAG[news.category] ?? CATEGORY_TAG.news
+
   return (
     <div className="jp-card" style={{ padding: '28px 32px' }}>
-      <Space style={{ marginBottom: 16 }}>
+      <Space style={{ marginBottom: 16 }} wrap>
         <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/news')}>
           返回
         </Button>
+        {news.source_url && (
+          <Button
+            type="link"
+            icon={<LinkOutlined />}
+            href={news.source_url}
+            target="_blank"
+            rel="noreferrer"
+          >
+            在新窗口打开原文
+          </Button>
+        )}
       </Space>
 
       <Space size={10} wrap>
-        <Tag color={news.category === 'notice' ? 'magenta' : 'cyan'}>
-          {news.category === 'notice' ? '官方公告' : '气象资讯'}
-        </Tag>
+        <Tag color={tag.color}>{tag.text}</Tag>
         {news.is_top && (
           <Tag color="red" icon={<FireOutlined />}>
             置顶
@@ -91,17 +110,40 @@ export default function NewsDetail() {
 
       <Divider style={{ borderColor: 'var(--jp-border)' }} />
 
-      <Paragraph
-        style={{
-          fontSize: 15,
-          lineHeight: 1.9,
-          color: 'var(--jp-ink)',
-          whiteSpace: 'pre-wrap',
-          margin: 0,
-        }}
-      >
-        {news.content}
-      </Paragraph>
+      {news.source_url ? (
+        <>
+          {/* 采集类资讯（如中央气象台预警）：内嵌原文，直接浏览完整内容 */}
+          <Alert
+            type="info"
+            showIcon
+            style={{ marginBottom: 12 }}
+            message="以下为该条资讯的原文页面（内嵌展示）；若加载不出来，可点击上方「在新窗口打开原文」。"
+          />
+          <iframe
+            src={news.source_url}
+            title={news.title}
+            style={{
+              width: '100%',
+              height: '74vh',
+              border: '1px solid var(--jp-border)',
+              borderRadius: 12,
+              background: '#fff',
+            }}
+          />
+        </>
+      ) : (
+        <Paragraph
+          style={{
+            fontSize: 15,
+            lineHeight: 1.9,
+            color: 'var(--jp-ink)',
+            whiteSpace: 'pre-wrap',
+            margin: 0,
+          }}
+        >
+          {news.content}
+        </Paragraph>
+      )}
     </div>
   )
 }

@@ -10,7 +10,8 @@ class NewsBase(BaseModel):
     title: str = Field(..., min_length=1, max_length=200)
     content: str = Field(..., min_length=1)
     cover_url: Optional[str] = None
-    category: str = "news"  # news / notice
+    source_url: Optional[str] = None  # 原文链接（详情页内嵌展示）
+    category: str = "news"  # news / notice / alert
     author: Optional[str] = None
     is_top: bool = False
     is_published: bool = False
@@ -24,6 +25,7 @@ class NewsUpdate(BaseModel):
     title: Optional[str] = None
     content: Optional[str] = None
     cover_url: Optional[str] = None
+    source_url: Optional[str] = None
     category: Optional[str] = None
     author: Optional[str] = None
     is_top: Optional[bool] = None
