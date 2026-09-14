@@ -16,6 +16,7 @@ import {
   deleteConversation,
   getConversationMessages,
   listConversations,
+  streamChat,
   type ConversationItem,
 } from '../api/chat'
 
@@ -130,53 +131,25 @@ export default function Chat() {
     ])
 
     try {
-      const resp = await fetch('/api/v1/chat/stream', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: content, conversation_id: convId }),
-      })
-
-      if (!resp.ok || !resp.body) throw new Error('流式请求失败')
-
-      const reader = resp.body.getReader()
-      const decoder = new TextDecoder()
-      let buffer = ''
-
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-        buffer += decoder.decode(value, { stream: true })
-
-        const lines = buffer.split('\n')
-        buffer = lines.pop() ?? ''
-
-        for (const line of lines) {
-          const trimmed = line.trim()
-          if (!trimmed.startsWith('data:')) continue
-          const payload = trimmed.slice(5).trim()
-          if (!payload) continue
-          try {
-            const evt = JSON.parse(payload)
-            if (evt.type === 'intent') {
-              setMessages((prev) => {
-                const next = [...prev]
-                const last = next[next.length - 1]
-                if (last?.role === 'assistant') last.intent = evt.intent
-                return next
-              })
-            } else if (evt.type === 'token') {
-              setMessages((prev) => {
-                const next = [...prev]
-                const last = next[next.length - 1]
-                if (last?.role === 'assistant') last.content += evt.content
-                return next
-              })
-            }
-          } catch {
-            // 忽略无法解析的行
-          }
+      // 走 api 层封装：内部会带上 Authorization（裸 fetch 会绕过 axios 拦截器，
+      // 之前就是这里漏了 token，导致登录用户被当成匿名、对话不落库）
+      await streamChat(content, convId, (evt) => {
+        if (evt.type === 'intent') {
+          setMessages((prev) => {
+            const next = [...prev]
+            const last = next[next.length - 1]
+            if (last?.role === 'assistant') last.intent = evt.intent
+            return next
+          })
+        } else if (evt.type === 'token') {
+          setMessages((prev) => {
+            const next = [...prev]
+            const last = next[next.length - 1]
+            if (last?.role === 'assistant') last.content += evt.content ?? ''
+            return next
+          })
         }
-      }
+      })
     } catch {
       setMessages((prev) => {
         const next = [...prev]
