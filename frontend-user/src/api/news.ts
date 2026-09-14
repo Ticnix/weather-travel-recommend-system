@@ -1,11 +1,14 @@
 import http from './http'
 
+// 资讯分类：news 普通资讯 / notice 官方公告 / alert 气象预警（采集自中央气象台）
+export type NewsCategory = 'news' | 'notice' | 'alert'
+
 export interface NewsItem {
   id: number
   title: string
   content: string
   cover_url: string | null
-  category: 'news' | 'notice'
+  category: NewsCategory
   author: string | null
   is_top: boolean
   is_published: boolean
@@ -24,7 +27,7 @@ export interface NewsListResult {
 export interface NewsListParams {
   page?: number
   page_size?: number
-  category?: 'news' | 'notice' | null
+  category?: NewsCategory | null
   keyword?: string
   published_only?: boolean
 }

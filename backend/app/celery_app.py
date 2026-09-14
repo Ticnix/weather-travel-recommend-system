@@ -15,7 +15,12 @@ celery_app = Celery(
     "weather_travel",
     broker=settings.REDIS_URL,
     backend=settings.REDIS_URL,
-    include=["app.tasks.weather_tasks", "app.tasks.clean_tasks", "app.tasks.rag_tasks"],
+    include=[
+        "app.tasks.weather_tasks",
+        "app.tasks.clean_tasks",
+        "app.tasks.rag_tasks",
+        "app.tasks.news_tasks",
+    ],
 )
 
 celery_app.conf.update(
@@ -32,6 +37,11 @@ celery_app.conf.update(
         "sync-weather-hourly": {
             "task": "app.tasks.weather_tasks.sync_weather_hourly",
             "schedule": crontab(minute="5"),
+        },
+        # 每天 7:30 / 17:30 采集气象资讯（中央气象台预警 + 本地天气简报）
+        "collect-weather-news": {
+            "task": "app.tasks.news_tasks.collect_weather_news",
+            "schedule": crontab(hour="7,17", minute="30"),
         },
     },
 )

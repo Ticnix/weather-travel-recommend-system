@@ -15,6 +15,7 @@ from app.core.response import success
 from app.db.session import get_db
 from app.models.news import News
 from app.schemas.news import NewsCreate, NewsOut, NewsUpdate
+from app.services import weather_news_service
 
 router = APIRouter(prefix="/api/v1/news", tags=["资讯公告"])
 
@@ -53,6 +54,27 @@ async def list_news(
     # 热点读接口缓存 5 分钟；新增/修改/删除时会主动清除该前缀
     data = await cached(cache_key, 300, _load)
     return success(data)
+
+
+@router.post("/collect", response_model=dict)
+async def collect_news(
+    current: CurrentUser,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    area: str = "广东",
+    with_forecast: bool = True,
+) -> dict:
+    """采集真实气象资讯：中央气象台预警 + 本地未来天气简报（需登录）。
+
+    - area：预警筛选的地区关键词（默认「广东」，传空字符串表示不限地区）
+    - with_forecast：是否同时生成一份未来天气简报
+    采集结果按标题去重，可重复调用。
+    """
+    stat = await weather_news_service.collect_all(
+        db, area_keyword=area, with_forecast=with_forecast
+    )
+    # 资讯内容有更新，清掉列表缓存
+    await cache_delete_prefix("news:list:")
+    return success(stat, message=f"采集完成，新增 {stat['created_total']} 条资讯")
 
 
 @router.get("/{news_id}", response_model=dict)

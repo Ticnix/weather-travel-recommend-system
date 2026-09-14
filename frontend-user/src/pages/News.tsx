@@ -14,18 +14,23 @@ import {
   Typography,
 } from 'antd'
 import { EyeOutlined, FireOutlined, SearchOutlined } from '@ant-design/icons'
-import { listNews, type NewsItem } from '../api/news'
+import { listNews, type NewsCategory, type NewsItem } from '../api/news'
 
 const { Paragraph, Text } = Typography
 const { Search } = Input
 
-type Category = 'news' | 'notice'
+// 分类 → 标签颜色/文案（alert 为采集自中央气象台的真实气象预警）
+const CATEGORY_TAG: Record<string, { color: string; text: string }> = {
+  notice: { color: 'magenta', text: '公告' },
+  alert: { color: 'red', text: '预警' },
+  news: { color: 'cyan', text: '资讯' },
+}
 
 export default function News() {
   const navigate = useNavigate()
   const [items, setItems] = useState<NewsItem[]>([])
   const [loading, setLoading] = useState(true)
-  const [category, setCategory] = useState<Category | 'all'>('all')
+  const [category, setCategory] = useState<NewsCategory | 'all'>('all')
   const [keyword, setKeyword] = useState('')
   const [page, setPage] = useState(1)
   const [total, setTotal] = useState(0)
@@ -87,11 +92,12 @@ export default function News() {
           <Segmented
             value={category}
             onChange={(v) => {
-              setCategory(v as Category | 'all')
+              setCategory(v as NewsCategory | 'all')
               setPage(1)
             }}
             options={[
               { label: '全部', value: 'all' },
+              { label: '气象预警', value: 'alert' },
               { label: '气象资讯', value: 'news' },
               { label: '官方公告', value: 'notice' },
             ]}
@@ -126,10 +132,10 @@ export default function News() {
                 <Space direction="vertical" size={10} style={{ width: '100%' }}>
                   <Space size={8}>
                     <Tag
-                      color={item.category === 'notice' ? 'magenta' : 'cyan'}
+                      color={CATEGORY_TAG[item.category]?.color ?? 'cyan'}
                       style={{ margin: 0 }}
                     >
-                      {item.category === 'notice' ? '公告' : '资讯'}
+                      {CATEGORY_TAG[item.category]?.text ?? '资讯'}
                     </Tag>
                     {item.is_top && (
                       <Tag
