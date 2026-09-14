@@ -7,8 +7,9 @@ export interface NewsItem {
   id: number
   title: string
   content: string
+  full_text: string | null // 原文正文（采集时抓取，有值则详情页直接阅读，无需 iframe）
   cover_url: string | null
-  source_url: string | null // 原文链接（有值时详情页内嵌展示原文）
+  source_url: string | null // 原文链接（无正文时详情页内嵌展示）
   category: NewsCategory
   author: string | null
   is_top: boolean

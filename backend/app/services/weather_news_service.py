@@ -21,6 +21,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.news import News
+from app.services.article_extractor import fetch_article_texts
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +61,7 @@ TAVILY_LOCAL_QUERIES: tuple[str, ...] = (
 # 通用天气导航页特征词：这类页面只有预报入口、没有资讯内容，采集时丢弃
 GENERIC_TITLE_MARKERS: tuple[str, ...] = (
     "天气预报", "天气查询", "15天", "7天天气", "气象台,tqyb", "城市预报",
+    "信息公开", "门户网站", "网站首页",
 )
 
 
@@ -190,6 +192,8 @@ async def collect_news_articles(
 ) -> dict:
     """采集中国天气网气象新闻并写入 news 表（按标题去重，默认只保留本地相关）。"""
     articles = await fetch_weather_news(limit=limit, local_only=local_only)
+    # 并发抓取原文正文：抓到的直接入库渲染，抓不到的仍可点原文链接
+    texts = await fetch_article_texts([a["url"] for a in articles]) if articles else {}
     created = 0
 
     for a in articles:
@@ -197,15 +201,17 @@ async def collect_news_articles(
         if exists:
             continue
 
+        full_text = texts.get(a["url"], "")
         db.add(
             News(
                 title=a["title"][:200],
                 content=(
                     f"【来源】中国天气网\n"
                     f"【标题】{a['title']}\n\n"
-                    f"本条为气象资讯，完整内容请查看下方内嵌的原文页面。\n"
+                    f"本条为气象资讯，完整内容请查看下方正文或原文链接。\n"
                     f"原文链接：{a['url']}"
                 ),
+                full_text=full_text or None,
                 cover_url=None,
                 source_url=a["url"],
                 category=CATEGORY_FORECAST,  # 归入普通资讯
@@ -228,8 +234,8 @@ async def collect_tavily_news(
     """用 Tavily 联网搜索采集**广州本地**气象资讯（需配置 TAVILY_API_KEY）。
 
     - 依次执行多个本地搜索词并合并去重，再过滤掉与广州无关的条目
-    - 通用搜索结果的目标站点不保证可被 iframe 内嵌，故只保存标题与摘要文本
-      （不设 source_url），避免详情页出现空白内嵌框
+    - 抓取原文正文存入 `full_text`：详情页可直接阅读完整内容，
+      不再依赖 iframe 内嵌（多数新闻站禁止内嵌，iframe 会显示空白）
     """
     # 局部导入：避免模块级循环依赖
     from app.core.config import settings
@@ -253,7 +259,8 @@ async def collect_tavily_news(
             seen_urls.add(url)
             merged.append(r)
 
-    created = 0
+    # 先筛出候选，再并发抓取原文正文（抓不到则降级为仅摘要 + 原文链接）
+    candidates: list[dict] = []
     for r in merged:
         title = (r.get("title") or "").strip()
         url = (r.get("url") or "").strip()
@@ -266,19 +273,29 @@ async def collect_tavily_news(
         # 本地化过滤：标题与摘要都不含本地关键词则丢弃
         if not _is_local(title, summary):
             continue
+        candidates.append({"title": title, "url": url, "summary": summary})
+
+    texts = await fetch_article_texts([c["url"] for c in candidates]) if candidates else {}
+
+    created = 0
+    for c in candidates:
+        title, url, summary = c["title"], c["url"], c["summary"]
         if await db.scalar(select(News.id).where(News.title == title)):
             continue
 
+        full_text = texts.get(url, "")
         db.add(
             News(
                 title=title,
                 content=(
                     f"【来源】联网搜索\n"
                     f"【摘要】{summary or '（无摘要）'}\n\n"
+                    f"（原文正文见下方正文区；若为空则请点击原文链接查看）\n"
                     f"原文链接：{url}"
                 ),
+                full_text=full_text or None,
                 cover_url=None,
-                source_url=None,
+                source_url=url,
                 category=CATEGORY_FORECAST,
                 author="联网搜索",
                 is_published=True,

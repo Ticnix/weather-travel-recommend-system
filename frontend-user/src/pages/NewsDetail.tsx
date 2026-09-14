@@ -110,7 +110,31 @@ export default function NewsDetail() {
 
       <Divider style={{ borderColor: 'var(--jp-border)' }} />
 
-      {news.source_url ? (
+      {/* 正文区优先级：
+          1) 已抓取原文正文 → 直接渲染（多数新闻站禁止 iframe 内嵌，这样最稳）
+          2) 有原文链接 → iframe 内嵌
+          3) 兜底 → 纯文本 content */}
+      {news.full_text ? (
+        <>
+          <Alert
+            type="success"
+            showIcon
+            style={{ marginBottom: 12 }}
+            message="以下为自动抓取的原文正文；若希望查看原网页排版，可点击上方「在新窗口打开原文」。"
+          />
+          <Paragraph
+            style={{
+              fontSize: 15,
+              lineHeight: 1.9,
+              color: 'var(--jp-ink)',
+              whiteSpace: 'pre-wrap',
+              margin: 0,
+            }}
+          >
+            {news.full_text}
+          </Paragraph>
+        </>
+      ) : news.source_url ? (
         <>
           {/* 采集类资讯（如中央气象台预警）：内嵌原文，直接浏览完整内容 */}
           <Alert

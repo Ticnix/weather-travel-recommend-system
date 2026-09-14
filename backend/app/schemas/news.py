@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field
 class NewsBase(BaseModel):
     title: str = Field(..., min_length=1, max_length=200)
     content: str = Field(..., min_length=1)
+    full_text: Optional[str] = None  # 原文正文（采集抓取，详情页直接阅读）
     cover_url: Optional[str] = None
     source_url: Optional[str] = None  # 原文链接（详情页内嵌展示）
     category: str = "news"  # news / notice / alert
@@ -24,6 +25,7 @@ class NewsCreate(NewsBase):
 class NewsUpdate(BaseModel):
     title: Optional[str] = None
     content: Optional[str] = None
+    full_text: Optional[str] = None
     cover_url: Optional[str] = None
     source_url: Optional[str] = None
     category: Optional[str] = None

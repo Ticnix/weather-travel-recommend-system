@@ -12,6 +12,8 @@ class News(Base, TimestampMixin):
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     title: Mapped[str] = mapped_column(String(200), nullable=False, index=True)
     content: Mapped[str] = mapped_column(Text, nullable=False)
+    # 原文正文：采集类资讯抓取到的正文（有值时详情页直接渲染，无需依赖 iframe 内嵌）
+    full_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     cover_url: Mapped[str | None] = mapped_column(String(255), nullable=True)
     # 原文链接：采集类资讯（如中央气象台预警）用于详情页内嵌展示原文
     source_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
