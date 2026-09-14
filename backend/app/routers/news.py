@@ -60,22 +60,22 @@ async def list_news(
 async def collect_news(
     current: CurrentUser,
     db: Annotated[AsyncSession, Depends(get_db)],
-    area: str = "广东",
+    area: str = "广州",
     with_news: bool = True,
     with_tavily: bool = True,
     with_forecast: bool = True,
 ) -> dict:
-    """采集真实气象资讯（需登录）。
+    """采集真实气象资讯（需登录），资讯统一本地化为广州内容。
 
-    - area：预警筛选的地区关键词（默认「广东」，传空字符串表示不限地区）
-    - with_news：是否采集中国天气网气象新闻
-    - with_tavily：是否用 Tavily 联网搜索采集本地资讯（需配置 Key）
-    - with_forecast：是否生成一份本地未来天气简报
+    - area：预警筛选的地区关键词（默认「广州」，本地无预警时自动回退「广东」）
+    - with_news：是否采集中国天气网气象新闻（只保留本地相关）
+    - with_tavily：是否用 Tavily 联网搜索采集广州本地资讯（需配置 Key）
+    - with_forecast：是否生成一份广州未来天气简报
     采集结果按标题去重，可重复调用。
     """
     stat = await weather_news_service.collect_all(
         db,
-        area_keyword=area,
+        area=area,
         with_news=with_news,
         with_tavily=with_tavily,
         with_forecast=with_forecast,

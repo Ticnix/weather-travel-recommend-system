@@ -30,7 +30,7 @@ def _run(coro):
 
 @celery_app.task(name="app.tasks.news_tasks.collect_weather_news")
 def collect_weather_news(
-    area: str = "广东",
+    area: str = "广州",
     with_news: bool = True,
     with_tavily: bool = True,
     with_forecast: bool = True,
@@ -50,7 +50,7 @@ def collect_weather_news(
             async with factory() as db:
                 return await collect_all(
                     db,
-                    area_keyword=area,
+                    area=area,
                     with_news=with_news,
                     with_tavily=with_tavily,
                     with_forecast=with_forecast,

@@ -45,6 +45,29 @@ _HEADERS = {
 CATEGORY_ALERT = "alert"  # 气象预警
 CATEGORY_FORECAST = "news"  # 天气预报简报（归入普通资讯）
 
+# 广州本地关键词：用于过滤资讯，保证「气象资讯」板块内容与广州相关
+LOCAL_KEYWORDS: tuple[str, ...] = (
+    "广州", "广东", "华南", "粤", "珠江", "珠三角", "花城", "羊城",
+)
+
+# Tavily 本地资讯搜索词（每条消耗 1 次搜索额度）；偏向「新闻」而非通用天气页
+TAVILY_LOCAL_QUERIES: tuple[str, ...] = (
+    "广州 天气 预警 新闻",
+    "广州 暴雨 台风 最新",
+    "广州 气象 通报",
+)
+
+# 通用天气导航页特征词：这类页面只有预报入口、没有资讯内容，采集时丢弃
+GENERIC_TITLE_MARKERS: tuple[str, ...] = (
+    "天气预报", "天气查询", "15天", "7天天气", "气象台,tqyb", "城市预报",
+)
+
+
+def _is_local(*texts: str | None) -> bool:
+    """判断给定文本是否与广州本地相关。"""
+    joined = " ".join(t for t in texts if t)
+    return any(k in joined for k in LOCAL_KEYWORDS)
+
 
 async def fetch_alerts(
     area_keyword: str = "广东",
@@ -114,10 +137,11 @@ class _LinkParser(HTMLParser):
             self._href = None
 
 
-async def fetch_weather_news(limit: int = 15) -> list[dict]:
+async def fetch_weather_news(limit: int = 15, local_only: bool = True) -> list[dict]:
     """抓取中国天气网资讯频道的新闻列表。
 
-    返回：[{title, url}, ...]，url 统一为 https 绝对地址（详情页要内嵌展示）。
+    - local_only=True：只保留与广州/广东相关的条目（资讯板块本地化要求）
+    - 返回：[{title, url}, ...]，url 统一为 https 绝对地址（详情页要内嵌展示）
     """
     async with httpx.AsyncClient(
         timeout=15.0, headers=_HEADERS, follow_redirects=True
@@ -145,6 +169,9 @@ async def fetch_weather_news(limit: int = 15) -> list[dict]:
             continue
         if not (".shtml" in href or "/2026" in href or "/2025" in href):
             continue
+        # 资讯板块要求本地化：过滤掉纯外地新闻
+        if local_only and not _is_local(title):
+            continue
 
         url = href if href.startswith("http") else WEATHER_NEWS_BASE + href
         url = url.replace("http://", "https://")  # 统一 https，避免 iframe 混合内容
@@ -158,9 +185,11 @@ async def fetch_weather_news(limit: int = 15) -> list[dict]:
     return results
 
 
-async def collect_news_articles(db: AsyncSession, limit: int = 15) -> dict:
-    """采集中国天气网气象新闻并写入 news 表（按标题去重）。"""
-    articles = await fetch_weather_news(limit=limit)
+async def collect_news_articles(
+    db: AsyncSession, limit: int = 15, local_only: bool = True
+) -> dict:
+    """采集中国天气网气象新闻并写入 news 表（按标题去重，默认只保留本地相关）。"""
+    articles = await fetch_weather_news(limit=limit, local_only=local_only)
     created = 0
 
     for a in articles:
@@ -193,13 +222,14 @@ async def collect_news_articles(db: AsyncSession, limit: int = 15) -> dict:
 
 async def collect_tavily_news(
     db: AsyncSession,
-    query: str = "广州 天气 预警 新闻",
-    limit: int = 8,
+    queries: tuple[str, ...] = TAVILY_LOCAL_QUERIES,
+    limit_per_query: int = 6,
 ) -> dict:
-    """用 Tavily 联网搜索采集本地气象资讯（需配置 TAVILY_API_KEY）。
+    """用 Tavily 联网搜索采集**广州本地**气象资讯（需配置 TAVILY_API_KEY）。
 
-    与中央气象台/中国天气网不同，这里是通用搜索结果，目标站点不保证可被 iframe 内嵌，
-    因此只保存标题与摘要文本（不设 source_url），避免详情页出现空白内嵌框。
+    - 依次执行多个本地搜索词并合并去重，再过滤掉与广州无关的条目
+    - 通用搜索结果的目标站点不保证可被 iframe 内嵌，故只保存标题与摘要文本
+      （不设 source_url），避免详情页出现空白内嵌框
     """
     # 局部导入：避免模块级循环依赖
     from app.core.config import settings
@@ -208,22 +238,37 @@ async def collect_tavily_news(
     if not settings.TAVILY_API_KEY:
         return {"created": 0, "skipped": "未配置 TAVILY_API_KEY"}
 
-    try:
-        results = await _search_tavily(query, limit)
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("Tavily 资讯采集失败: %s", exc)
-        return {"created": 0, "error": str(exc)}
+    merged: list[dict] = []
+    seen_urls: set[str] = set()
+    for q in queries:
+        try:
+            part = await _search_tavily(q, limit_per_query)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Tavily 采集失败（%s）: %s", q, exc)
+            continue
+        for r in part:
+            url = (r.get("url") or "").strip()
+            if not url or url in seen_urls:
+                continue
+            seen_urls.add(url)
+            merged.append(r)
 
     created = 0
-    for r in results:
-        title = (r.get("title") or "").strip()[:200]
+    for r in merged:
+        title = (r.get("title") or "").strip()
         url = (r.get("url") or "").strip()
-        if not title or not url:
+        if not (8 <= len(title) <= 200) or not url:
+            continue
+        # 丢弃纯导航页（如「XX天气预报查询」），只保留有实质内容的资讯
+        if any(m in title for m in GENERIC_TITLE_MARKERS):
+            continue
+        summary = (r.get("content") or "").strip()
+        # 本地化过滤：标题与摘要都不含本地关键词则丢弃
+        if not _is_local(title, summary):
             continue
         if await db.scalar(select(News.id).where(News.title == title)):
             continue
 
-        summary = (r.get("content") or "").strip()
         db.add(
             News(
                 title=title,
@@ -243,16 +288,25 @@ async def collect_tavily_news(
         created += 1
 
     await db.commit()
-    return {"fetched": len(results), "created": created}
+    return {"fetched": len(merged), "created": created}
 
 
 async def collect_alerts(
     db: AsyncSession,
-    area_keyword: str = "广东",
+    area: str = "广州",
     max_pages: int = 5,
+    fallback: str | None = None,
 ) -> dict:
-    """采集中央气象台预警并写入 news 表（按标题去重）。"""
-    alerts = await fetch_alerts(area_keyword, max_pages=max_pages)
+    """采集中央气象台预警并写入 news 表（按标题去重）。
+
+    默认**严格只取 area（广州）本地预警**，保证「气象资讯」板块全部与广州相关；
+    若确实希望本地无预警时回退到更大范围（如「广东」），可显式传入 fallback。
+    """
+    alerts = await fetch_alerts(area, max_pages=max_pages)
+    used_area = area
+    if not alerts and fallback:
+        alerts = await fetch_alerts(fallback, max_pages=max_pages)
+        used_area = fallback
     created = 0
 
     for a in alerts:
@@ -282,7 +336,7 @@ async def collect_alerts(
         created += 1
 
     await db.commit()
-    return {"fetched": len(alerts), "created": created}
+    return {"fetched": len(alerts), "created": created, "area": used_area}
 
 
 async def collect_forecast_digest(db: AsyncSession, city: str = "广州") -> dict:
@@ -346,25 +400,25 @@ async def collect_forecast_digest(db: AsyncSession, city: str = "广州") -> dic
 
 async def collect_all(
     db: AsyncSession,
-    area_keyword: str = "广东",
+    area: str = "广州",
     with_forecast: bool = True,
     with_news: bool = True,
     with_tavily: bool = True,
     max_pages: int = 5,
     news_limit: int = 15,
 ) -> dict:
-    """采集全部气象资讯。数据源：
+    """采集全部气象资讯，「气象资讯」板块统一本地化为广州内容。数据源：
 
-    - 气象预警：中央气象台（按地区筛选）
-    - 气象新闻：中国天气网
-    - 本地资讯：Tavily 联网搜索（需配置 Key）
-    - 天气简报：本系统天气数据
+    - 气象预警：中央气象台（广州优先，无则广东全省）
+    - 气象新闻：中国天气网（只保留广州/广东相关）
+    - 本地资讯：Tavily 联网搜索 广州天气 / 暴雨 / 台风
+    - 天气简报：本系统广州天气数据
     """
-    alert_stat = await collect_alerts(db, area_keyword=area_keyword, max_pages=max_pages)
+    alert_stat = await collect_alerts(db, area=area, max_pages=max_pages)
 
     news_stat: dict = {"created": 0}
     if with_news:
-        news_stat = await collect_news_articles(db, limit=news_limit)
+        news_stat = await collect_news_articles(db, limit=news_limit, local_only=True)
 
     tavily_stat: dict = {"created": 0}
     if with_tavily:
@@ -381,7 +435,7 @@ async def collect_all(
         + forecast_stat.get("created", 0)
     )
     return {
-        "area": area_keyword,
+        "area": area,
         "alerts": alert_stat,
         "news": news_stat,
         "tavily": tavily_stat,
