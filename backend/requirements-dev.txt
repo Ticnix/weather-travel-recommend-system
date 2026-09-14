@@ -1,0 +1,10 @@
+# ===== 开发/测试依赖（与运行依赖分开，生产镜像可不装）=====
+# 安装：pip install -r requirements-dev.txt
+
+pytest>=8.0.0            # 测试框架
+pytest-asyncio>=0.24.0   # 支持 async def 测试用例
+pytest-cov>=6.0.0        # 覆盖率统计（生成 HTML + 终端报告）
+respx>=0.21.0            # Mock httpx 请求（拦截外部 API：和风/高德/Tavily）
+
+# 代码检查（Day 31 CI 使用）
+ruff>=0.8.0              # Python 静态检查 + 格式化

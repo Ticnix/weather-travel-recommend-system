@@ -1,9 +1,17 @@
-﻿from typing import AsyncGenerator
+﻿import os
+from typing import AsyncGenerator
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.pool import NullPool
 
 from app.core.config import settings
+
+# 测试环境用 NullPool：pytest-asyncio 会给每个用例新建事件循环，
+# 而连接池会缓存「绑定旧 loop」的连接，下个用例复用时直接抛
+# `RuntimeError: Event loop is closed`（与 Celery 侧同一类坑）。
+# 生产环境保持默认连接池，避免频繁建连的开销。
+_use_null_pool = os.getenv("DB_USE_NULLPOOL", "").lower() in ("1", "true", "yes")
 
 # 异步引擎：连接池 + 断线重连检测
 engine = create_async_engine(
@@ -11,6 +19,7 @@ engine = create_async_engine(
     echo=False,
     pool_pre_ping=True,
     future=True,
+    **({"poolclass": NullPool} if _use_null_pool else {}),
 )
 
 # 异步会话工厂

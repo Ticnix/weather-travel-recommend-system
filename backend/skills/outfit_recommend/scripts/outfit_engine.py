@@ -18,10 +18,12 @@ TEMP_RULES: list[tuple[tuple[float, float], str]] = [
     ((-99.0, 15.0), "寒冷：厚外套/羽绒服 + 毛衣内搭，注意保暖（围巾手套）"),
 ]
 
+# 注意顺序：更"危险"的天气现象放前面，便于阅读时优先看到关键提醒
+# （命中规则时不再 break，因此「雷阵雨」会同时拿到防雷与防雨两条建议）
 WEATHER_RULES: dict[str, str] = {
-    "雨": "雨天：防滑防水鞋 + 轻便防水外套，携带雨具，避免棉质易湿裤装",
-    "雪": "雪天：保暖防滑靴 + 羽绒服，注意头部手部保暖",
     "雷": "雷雨：防水装备 + 避免金属物品，户外活动注意防雷",
+    "雪": "雪天：保暖防滑靴 + 羽绒服，注意头部手部保暖",
+    "雨": "雨天：防滑防水鞋 + 轻便防水外套，携带雨具，避免棉质易湿裤装",
     "风": "大风：防风外套，避免过于宽松衣物，户外避开风口",
     "雾": "雾天：穿亮色/反光衣物提高可见度，注意交通安全",
     "霾": "霾天：佩戴口罩，减少户外暴露，穿深色耐脏衣物",
@@ -57,10 +59,11 @@ def _build_rules(temp: float, weather_desc: str, scene: str | None) -> list[str]
         if lo <= temp < hi:
             rules.append(rule)
             break
+    # 不 break：天气现象可能同时命中多条
+    # （如「雷阵雨」既需要防雷、也需要防雨），只取第一条会漏掉关键提醒
     for keyword, rule in WEATHER_RULES.items():
         if keyword in weather_desc:
             rules.append(rule)
-            break
     if scene:
         for keyword, rule in SCENE_RULES.items():
             if keyword in scene:

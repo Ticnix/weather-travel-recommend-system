@@ -2,6 +2,7 @@
 __pycache__/
 *.pyc
 venv/
+.venv/
 .env
 *.log
 *.err
@@ -9,7 +10,12 @@ venv/
 celerybeat-schedule
 celerybeat-schedule-shm
 celerybeat-schedule-wal
+
+# 测试产物
 .pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
 # 清洗模块运行期产生的上传与清洗结果文件
 backend/uploads/
 backend/cleaned/
@@ -21,3 +27,6 @@ dist/
 
 # docker
 *.volume
+
+# 工具运行期目录（本地环境相关，不入库）
+.workbuddy/
