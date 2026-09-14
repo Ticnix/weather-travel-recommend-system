@@ -16,6 +16,11 @@ celerybeat-schedule-wal
 .coverage
 coverage.xml
 htmlcov/
+# 前端测试产物（vitest 覆盖率 / Playwright 报告与录像截图）
+coverage/
+e2e-results/
+playwright-report/
+test-results/
 # 清洗模块运行期产生的上传与清洗结果文件
 backend/uploads/
 backend/cleaned/

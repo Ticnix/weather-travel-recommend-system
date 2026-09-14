@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
+import { isAxiosError } from 'axios'
 import {
   Alert,
   Button,
@@ -59,7 +60,16 @@ export default function Login() {
       }
       navigate(from, { replace: true })
     } catch (e) {
-      setError(e instanceof Error ? e.message : '操作失败，请重试')
+      // 登录失败要展示后端给的原因（如「用户名或密码错误」）。
+      // http.ts 的错误拦截器对登录接口不弹全局提示、reject 的是原始 axios 错误，
+      // 其 e.message 是「Request failed with status code 401」这种技术信息，
+      // 直接显示出来用户看不懂，因此这里主动提取响应体里的 detail。
+      if (isAxiosError(e)) {
+        const detail = (e.response?.data as { detail?: string } | undefined)?.detail
+        setError(detail || '操作失败，请检查网络后重试')
+      } else {
+        setError(e instanceof Error ? e.message : '操作失败，请重试')
+      }
     } finally {
       setLoading(false)
     }
@@ -161,8 +171,9 @@ export default function Login() {
         <Divider style={{ borderColor: 'var(--jp-border)', margin: '20px 0 12px' }}>
           <Text style={{ color: 'var(--jp-ink-3)', fontSize: 12 }}>体验账号</Text>
         </Divider>
+        {/* 演示环境体验账号：仅用于项目评审，生产环境不应展示 */}
         <Text style={{ color: 'var(--jp-ink-3)', fontSize: 12, display: 'block', textAlign: 'center' }}>
-          管理员：admin / admin280517
+          管理员：admin / Admin@123456
         </Text>
       </div>
     </div>

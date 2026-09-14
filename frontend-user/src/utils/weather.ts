@@ -21,13 +21,29 @@ const WEATHER_MAP: Record<string, WeatherVisual> = {
 }
 
 // 根据 weather_desc（如"小雨"）或 weather_code 匹配视觉信息
+//
+// 复合描述（「中雨转小雨」「晴间多云」「雷阵雨伴冰雹」）会同时包含多个关键词，
+// 因此不能简单地"谁先声明用谁"，规则是：
+//   1. **出现位置最靠前**的优先（复合天气以先出现的为主）
+//   2. 位置相同时，**更长的关键词**优先（更具体的描述不该被宽泛描述抢走）
+// 例：
+//   「中雨转小雨」  → 中雨(位置0) vs 小雨(位置3)  → 中雨
+//   「雷阵雨伴冰雹」→ 雷阵雨(位置0) vs 雷阵雨伴冰雹(位置0) → 取更长的「雷阵雨伴冰雹」
 export function getWeatherVisual(desc?: string | null): WeatherVisual {
   if (!desc) return { icon: '🌤️', label: '未知', color: '#8c8c8c' }
-  // 尝试精确匹配
+
+  let bestKey: string | null = null
+  let bestIndex = Number.POSITIVE_INFINITY
   for (const key of Object.keys(WEATHER_MAP)) {
-    if (desc.includes(key)) return WEATHER_MAP[key]
+    const idx = desc.indexOf(key)
+    if (idx === -1) continue
+    const longer = key.length > (bestKey?.length ?? 0)
+    if (idx < bestIndex || (idx === bestIndex && longer)) {
+      bestKey = key
+      bestIndex = idx
+    }
   }
-  return { icon: '🌤️', label: desc, color: '#8c8c8c' }
+  return bestKey ? WEATHER_MAP[bestKey] : { icon: '🌤️', label: desc, color: '#8c8c8c' }
 }
 
 // 星期格式化
