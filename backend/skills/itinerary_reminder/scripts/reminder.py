@@ -12,7 +12,38 @@ import re
 from datetime import date, timedelta
 
 from app.services import itinerary_service
+from app.services.city_dict import lookup_city
 from app.services.weather_service import fetch_weather
+
+# 行程未写地点 / 地点无法解析城市时的默认城市
+DEFAULT_CITY = "广州"
+
+
+def _resolve_city(location: str | None) -> str | None:
+    """从行程地点文本解析城市规范名（如「上海迪士尼」→「上海」）。
+
+    解析不到时返回 None，由调用方回落到默认城市。
+    """
+    if not location:
+        return None
+    info = lookup_city(location)
+    return info.name if info else None
+
+
+async def _weather_line(city: str, date_str: str) -> str:
+    """查询指定城市在目标日期的天气文案（含预报告警兜底）。"""
+    try:
+        bundle = await fetch_weather(city)
+    except Exception as exc:  # noqa: BLE001
+        return f"{city}：天气查询失败（{exc}）"
+
+    for d in bundle.daily:
+        if d.date == date_str:
+            text = f"{city}：{d.weather_desc}，气温 {d.temp_min}~{d.temp_max}°C"
+            if d.precipitation_sum:
+                text += f"，降水 {d.precipitation_sum}mm"
+            return text
+    return f"{city}：暂无该日精确预报，可参考近期天气趋势"
 
 
 def parse_date_expression(text: str) -> str | None:
@@ -62,19 +93,17 @@ async def run(user_id: int, query: str) -> str:
             return f"你在 {date_str} 没有安排行程。"
         header = f"你在 {date_str} 的行程安排："
 
-    weather_text = ""
-    try:
-        bundle = await fetch_weather("广州")
-        for d in bundle.daily:
-            if d.date == date_str:
-                weather_text = f"{d.weather_desc}，气温 {d.temp_min}~{d.temp_max}°C"
-                if d.precipitation_sum:
-                    weather_text += f"，降水 {d.precipitation_sum}mm"
-                break
-        if not weather_text and bundle.daily:
-            weather_text = "暂无该日精确预报，可参考近期天气趋势"
-    except Exception as exc:  # noqa: BLE001
-        weather_text = f"天气查询失败：{exc}"
+    # 按行程地点解析城市（支持跨城市行程），逐城市查询当日天气
+    cities: list[str] = []
+    for it in items:
+        city = _resolve_city(it.get("location"))
+        if city and city not in cities:
+            cities.append(city)
+    if not cities:
+        # 行程未写地点或地点无法识别城市时，回落到默认城市
+        cities = [DEFAULT_CITY]
+
+    weather_text = "\n".join([await _weather_line(c, date_str) for c in cities])
 
     lines = [header]
     for it in items:
@@ -85,6 +114,6 @@ async def run(user_id: int, query: str) -> str:
             line += f"（{it['activity']}）"
         lines.append(line)
 
-    lines.append(f"\n当天天气：{weather_text}")
+    lines.append(f"\n当天天气：\n{weather_text}")
     lines.append("\n请基于以上行程和天气，逐条给出出行提醒与推荐（如雨天提醒带伞、高温提醒防晒补水、户外活动是否建议改期等）。")
     return "\n".join(lines)

@@ -59,10 +59,11 @@ GENERATE_SYSTEM_PROMPT = (
     "本地攻略知识用 search_knowledge，资讯用 search_news。\n"
     "3. 若问题涉及实时性/时效性信息且上述工具覆盖不到（如景区当天开放情况、"
     "最新活动、门票价格、时事新闻），则调用 web_search 联网搜索。\n"
-    "4. 若问题涉及用户自己的内容（如\"我的行程计划\"\"我上次收藏的\"等个性化信息），"
-    "则调用 search_my_plans 检索该用户的私有知识库。\n"
-    "5. 若问题涉及用户某天的行程安排或需要结合天气给出提醒（如\"明天有什么安排\""
-    "\"后天要注意什么\"\"行程当天天气\"），则调用 check_itinerary_weather。\n"
+    "4. 若问题涉及用户上传的资料/笔记（如\"我上传的攻略\"\"我收藏的资料\"等文档内容），"
+    "则调用 search_my_plans 检索该用户的私有知识库（面向文档资料，不是行程表）。\n"
+    "5. 若问题涉及用户自己添加的行程安排、或需结合天气给出提醒（如\"明天有什么安排\""
+    "\"我的行程\"\"后天要注意什么\"\"行程当天天气\"），必须调用 check_itinerary_weather"
+    "查询结构化行程表，不要用 search_my_plans。\n"
     "6. 若问题涉及从A地到B地的路线/交通方式（如\"从广州南站到广州塔怎么走\""
     "\"去白云山坐地铁还是打车\"），则调用 plan_travel_route 出行规划。"
     "若用户未给出出发地，先用默认出发地（广州中心城区）给出参考方案，"
@@ -105,7 +106,7 @@ _STRONG_INTENT_KEYWORDS: dict[str, tuple[str, ...]] = {
     "outfit": ("穿搭", "穿什么", "怎么穿", "该穿", "穿衣服", "着装", "穿多少", "穿鞋"),
     "travel": (
         "路线", "怎么走", "怎么去", "出行", "交通", "地铁", "公交", "驾车",
-        "开车", "打车", "行程", "多远", "多久能到", "怎么到达",
+        "开车", "打车", "行程", "日程", "安排", "多远", "多久能到", "怎么到达",
     ),
     "knowledge": (
         "景点", "美食", "好吃", "好玩", "攻略", "酒店", "住宿",
@@ -132,6 +133,11 @@ def _keyword_intent(text: str) -> str:
     return "other"
 
 
+# 资讯类关键词：需要优先于天气词判定
+# （如「台风资讯」应归为资讯检索，而不是被"台风"抢先判成 weather）
+_NEWS_KEYWORDS: tuple[str, ...] = ("资讯", "新闻", "公告", "报道", "通知", "动态")
+
+
 def _strong_keyword_intent(text: str) -> str | None:
     """强关键词预判：命中即视为高置信意图，未命中返回 None。
 
@@ -140,6 +146,10 @@ def _strong_keyword_intent(text: str) -> str | None:
     因此对高置信关键词直接定意图，不依赖 LLM 分类稳定性，
     顺带省掉一次 LLM 调用（省 token、降延迟）。
     """
+    # 资讯类优先判定：归入 knowledge（该意图下会绑定 search_news 工具）
+    if any(kw in text for kw in _NEWS_KEYWORDS):
+        return "knowledge"
+
     for label, keywords in _STRONG_INTENT_KEYWORDS.items():
         for kw in keywords:
             if kw in text:
