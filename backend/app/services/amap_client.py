@@ -91,12 +91,95 @@ async def geocode(address: str, city: str | None = None) -> dict[str, Any] | Non
     return None
 
 
+def list_landmarks() -> list[dict[str, Any]]:
+    """返回内置常用地标（无高德 Key 时的兜底，也供前端「常用地点」快捷选择）。"""
+    seen: set[tuple[float, float]] = set()
+    items: list[dict[str, Any]] = []
+    for name, (lng, lat) in _GZ_LANDMARKS.items():
+        if (lng, lat) in seen:  # 「广州塔 / 小蛮腰」等别名共用坐标，只保留第一个
+            continue
+        seen.add((lng, lat))
+        items.append({"name": name, "lng": lng, "lat": lat})
+    return items
+
+
+async def suggest_places(
+    keyword: str,
+    city: str | None = None,
+    limit: int = 8,
+) -> list[dict[str, Any]]:
+    """地点输入提示：关键词 → 候选地点列表（含精确经纬度）。
+
+    供前端「输入联想」使用，选中后可直接把坐标传给路线规划，
+    彻底避免「地名解析不出来 → 报错」的问题。
+
+    未配置 Key 时降级为在本地地标表里模糊匹配。
+    """
+    kw = (keyword or "").strip()
+    if not kw:
+        return []
+
+    if not settings.AMAP_API_KEY:
+        hits = [it for it in list_landmarks() if kw in it["name"] or it["name"] in kw]
+        return hits[:limit]
+
+    params = {
+        "key": settings.AMAP_API_KEY,
+        "keywords": kw,
+        "city": city or settings.AMAP_DEFAULT_CITY,
+        "citylimit": "false",  # 允许跨城搜索
+        "datatype": "all",
+    }
+    try:
+        async with httpx.AsyncClient(timeout=8.0) as client:
+            resp = await client.get(f"{settings.AMAP_BASE_URL}/assistant/inputtips", params=params)
+            resp.raise_for_status()
+            data = resp.json()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("高德输入提示失败: %s", exc)
+        return []
+
+    if data.get("status") != "1":
+        return []
+
+    items: list[dict[str, Any]] = []
+    for tip in data.get("tips") or []:
+        name = (tip.get("name") or "").strip()
+        loc = tip.get("location") or ""
+        # 行政区、公交线路等条目没有坐标，无法用于路线规划，直接跳过
+        if not name or "," not in loc:
+            continue
+        try:
+            lng_str, lat_str = loc.split(",")[:2]
+            lng, lat = float(lng_str), float(lat_str)
+        except ValueError:
+            continue
+        items.append(
+            {
+                "name": name,
+                "district": tip.get("district") or "",
+                "address": tip.get("address") or "",
+                "lng": lng,
+                "lat": lat,
+            }
+        )
+        if len(items) >= limit:
+            break
+    return items
+
+
 async def plan_route(
     origin: str,
     destination: str,
     city: str | None = None,
+    origin_point: dict[str, Any] | None = None,
+    destination_point: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """路线规划：返回多套方案（真实高德：驾车 + 公交；兜底：多交通方式估算）。
+
+    origin_point / destination_point：前端「输入联想」选中的地点坐标
+    （形如 {"lng": 113.32, "lat": 23.10, "formatted": "广州塔"}）。
+    传了就直接使用坐标、**跳过地理编码**，避免地名解析失败导致报错。
 
     返回结构：
     {
@@ -111,8 +194,8 @@ async def plan_route(
     """
     # 优先走真实高德 API（驾车 + 公交，按耗时合并排序）
     if settings.AMAP_API_KEY:
-        driving = await _plan_driving_amap(origin, destination, city)
-        transit = await _plan_transit_amap(origin, destination, city)
+        driving = await _plan_driving_amap(origin, destination, city, origin_point, destination_point)
+        transit = await _plan_transit_amap(origin, destination, city, origin_point, destination_point)
         routes = []
         if driving and driving.get("routes"):
             routes.extend(driving["routes"])
@@ -128,13 +211,20 @@ async def plan_route(
             }
 
     # 兜底：基于坐标的直线距离估算（多交通方式）
-    return await _plan_fallback(origin, destination, city)
+    return await _plan_fallback(origin, destination, city, origin_point, destination_point)
 
 
-async def _plan_transit_amap(origin: str, destination: str, city: str | None) -> dict[str, Any] | None:
+async def _plan_transit_amap(
+    origin: str,
+    destination: str,
+    city: str | None,
+    o_point: dict[str, Any] | None = None,
+    d_point: dict[str, Any] | None = None,
+) -> dict[str, Any] | None:
     """高德公交路线规划 API（含地铁）。"""
-    o = await geocode(origin, city)
-    d = await geocode(destination, city)
+    # 前端已选点则直接用坐标，跳过地理编码
+    o = o_point or await geocode(origin, city)
+    d = d_point or await geocode(destination, city)
     if not o or not d:
         return None
 
@@ -189,10 +279,17 @@ async def _plan_transit_amap(origin: str, destination: str, city: str | None) ->
         return None
 
 
-async def _plan_driving_amap(origin: str, destination: str, city: str | None) -> dict[str, Any] | None:
+async def _plan_driving_amap(
+    origin: str,
+    destination: str,
+    city: str | None,
+    o_point: dict[str, Any] | None = None,
+    d_point: dict[str, Any] | None = None,
+) -> dict[str, Any] | None:
     """高德驾车路线规划 API。"""
-    o = await geocode(origin, city)
-    d = await geocode(destination, city)
+    # 前端已选点则直接用坐标，跳过地理编码
+    o = o_point or await geocode(origin, city)
+    d = d_point or await geocode(destination, city)
     if not o or not d:
         return None
 
@@ -251,10 +348,16 @@ def _haversine_km(lng1: float, lat1: float, lng2: float, lat2: float) -> float:
     return 2 * r * math.asin(math.sqrt(a))
 
 
-async def _plan_fallback(origin: str, destination: str, city: str | None) -> dict[str, Any]:
+async def _plan_fallback(
+    origin: str,
+    destination: str,
+    city: str | None,
+    o_point: dict[str, Any] | None = None,
+    d_point: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """兜底路线规划：用城市坐标算直线距离，衍生多种交通方式的估算方案。"""
-    o = await geocode(origin, city)
-    d = await geocode(destination, city)
+    o = o_point or await geocode(origin, city)
+    d = d_point or await geocode(destination, city)
     if not o or not d:
         return {
             "origin": origin,

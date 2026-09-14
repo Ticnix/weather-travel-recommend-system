@@ -4,7 +4,19 @@ from fastapi import FastAPI
 
 from app.core.exceptions import register_exception_handlers
 from app.core.response import success
-from app.routers import chat, clean, feedback, itinerary, knowledge, news, recommend, user_knowledge, users, weather
+from app.routers import (
+    chat,
+    clean,
+    feedback,
+    itinerary,
+    knowledge,
+    news,
+    places,
+    recommend,
+    user_knowledge,
+    users,
+    weather,
+)
 
 app = FastAPI(title="气象出行推荐后端API", version="0.6.0")
 
@@ -22,6 +34,7 @@ app.include_router(user_knowledge.router)
 app.include_router(itinerary.router)
 app.include_router(chat.router)
 app.include_router(recommend.router)
+app.include_router(places.router)
 
 
 @app.get("/", tags=["系统"])

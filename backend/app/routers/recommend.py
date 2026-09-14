@@ -22,9 +22,27 @@ async def recommend_travel(
     origin: str = Query(..., min_length=1, description="出发地，如「广州南站」"),
     destination: str = Query(..., min_length=1, description="目的地，如「广州塔」"),
     city: Optional[str] = Query(None, description="所在城市，默认广州"),
+    origin_lng: Optional[float] = Query(None, description="出发地经度（前端选点后直传）"),
+    origin_lat: Optional[float] = Query(None, description="出发地纬度"),
+    destination_lng: Optional[float] = Query(None, description="目的地经度"),
+    destination_lat: Optional[float] = Query(None, description="目的地纬度"),
 ) -> dict:
-    """出行规划推荐：返回多套带综合评分的出行方案 + 当日天气。"""
-    data = await route_planner.plan_structured(origin, destination, city)
+    """出行规划推荐：返回多套带综合评分的出行方案 + 当日天气。
+
+    传入选点坐标时**直接按坐标规划、跳过地名解析**，
+    避免手输地名识别不出来导致规划失败。
+    """
+    o_point = (
+        {"lng": origin_lng, "lat": origin_lat, "formatted": origin}
+        if origin_lng is not None and origin_lat is not None
+        else None
+    )
+    d_point = (
+        {"lng": destination_lng, "lat": destination_lat, "formatted": destination}
+        if destination_lng is not None and destination_lat is not None
+        else None
+    )
+    data = await route_planner.plan_structured(origin, destination, city, o_point, d_point)
     return success(data=data)
 
 

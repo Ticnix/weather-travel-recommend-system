@@ -29,13 +29,22 @@ export interface TravelResult {
   hint?: string
 }
 
+// 选点坐标（从输入联想选中地点后传入，后端直接按坐标规划、跳过地名解析）
+export interface TravelCoords {
+  origin_lng?: number
+  origin_lat?: number
+  destination_lng?: number
+  destination_lat?: number
+}
+
 export async function recommendTravel(
   origin: string,
   destination: string,
   city?: string,
+  coords?: TravelCoords,
 ): Promise<TravelResult> {
   return http.get('/recommend/travel', {
-    params: { origin, destination, city: city ?? undefined },
+    params: { origin, destination, city: city ?? undefined, ...coords },
   })
 }
 

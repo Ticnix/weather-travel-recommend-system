@@ -90,6 +90,8 @@ async def plan_structured(
     origin: str,
     destination: str,
     city: str | None = None,
+    origin_point: dict[str, Any] | None = None,
+    destination_point: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """出行规划结构化入口，返回可直接用于前端渲染的 dict。
 
@@ -105,7 +107,7 @@ async def plan_structured(
     if not origin or not destination:
         return {"error": "请提供出发地和目的地，例如「从广州南站到广州塔怎么走」。"}
 
-    plan = await amap_client.plan_route(origin, destination, city)
+    plan = await amap_client.plan_route(origin, destination, city, origin_point, destination_point)
     routes = plan.get("routes", [])
     if not routes:
         err = plan.get("error", "路线规划失败，请稍后重试或提供更具体的地点。")

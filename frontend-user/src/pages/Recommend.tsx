@@ -1,7 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import {
+  AutoComplete,
   Button,
+  Dropdown,
   Input,
   Progress,
   Segmented,
@@ -28,11 +30,15 @@ import {
   type TravelResult,
   type WeatherHead,
 } from '../api/recommend'
+import { listLandmarks, suggestPlaces, type PlaceItem } from '../api/places'
 import { getWeatherVisual } from '../utils/weather'
 
 const { Text, Paragraph } = Typography
 
 type Tab = 'travel' | 'outfit'
+
+// 联想下拉项：除展示用 label 外，额外携带完整地点信息（含坐标）
+type PlaceOption = { value: string; label: React.ReactNode; place: PlaceItem }
 
 // 交通方式 → 图标/点缀色
 const MODE_META: Record<string, { color: string; icon: React.ReactNode }> = {
@@ -66,6 +72,16 @@ export default function Recommend() {
   const [travel, setTravel] = useState<TravelResult | null>(null)
   const [travelError, setTravelError] = useState<string | null>(null)
 
+  // 已选中的地点（含坐标）：从联想下拉或常用地点选择后写入，
+  // 提交规划时把坐标一并传给后端，跳过地名解析，避免「认不出地名」而失败
+  const [originPoint, setOriginPoint] = useState<PlaceItem | null>(null)
+  const [destinationPoint, setDestinationPoint] = useState<PlaceItem | null>(null)
+  const [originOptions, setOriginOptions] = useState<PlaceOption[]>([])
+  const [destOptions, setDestOptions] = useState<PlaceOption[]>([])
+  const [landmarks, setLandmarks] = useState<PlaceItem[]>([])
+  const originTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const destTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
   // 穿搭表单
   const [scene, setScene] = useState<string | null>(null)
   const [pref, setPref] = useState<string | null>(null)
@@ -74,7 +90,45 @@ export default function Recommend() {
 
   useEffect(() => {
     getWeatherHead().then(setHead).catch(() => {})
+    // 常用地点：兜底入口，一个字不打也能一键选点
+    listLandmarks().then(setLandmarks).catch(() => {})
   }, [])
+
+  // 输入联想：300ms 防抖，避免每敲一个字都打接口
+  const searchPlaces = useCallback(
+    (
+      keyword: string,
+      timer: { current: ReturnType<typeof setTimeout> | null },
+      setOptions: (v: PlaceOption[]) => void,
+    ) => {
+      if (timer.current) clearTimeout(timer.current)
+      const kw = keyword.trim()
+      if (!kw) {
+        setOptions([])
+        return
+      }
+      timer.current = setTimeout(async () => {
+        const items = await suggestPlaces(kw).catch(() => [] as PlaceItem[])
+        setOptions(
+          items.map((it) => ({
+            value: it.name,
+            label: (
+              <span>
+                {it.name}
+                {it.district ? (
+                  <Text style={{ color: 'var(--jp-ink-3)', fontSize: 12, marginLeft: 8 }}>
+                    {it.district.replace(/^广东省/, '')}
+                  </Text>
+                ) : null}
+              </span>
+            ),
+            place: it,
+          })),
+        )
+      }, 300)
+    },
+    [],
+  )
 
   const loadTravel = async () => {
     if (!origin.trim() || !destination.trim()) {
@@ -84,7 +138,12 @@ export default function Recommend() {
     setTravelLoading(true)
     setTravelError(null)
     try {
-      const res = await recommendTravel(origin.trim(), destination.trim())
+      const res = await recommendTravel(origin.trim(), destination.trim(), undefined, {
+        origin_lng: originPoint?.lng,
+        origin_lat: originPoint?.lat,
+        destination_lng: destinationPoint?.lng,
+        destination_lat: destinationPoint?.lat,
+      })
       if (res.error) {
         setTravel(null)
         setTravelError(res.error)
@@ -170,18 +229,42 @@ export default function Recommend() {
                 alignItems: 'center',
               }}
             >
-              <Input
+              <AutoComplete
                 value={origin}
-                onChange={(e) => setOrigin(e.target.value)}
-                prefix={<LeftOutlined style={{ color: 'var(--jp-ink-3)' }} />}
-                placeholder="出发地，如 广州南站"
-              />
-              <Input
+                options={originOptions}
+                onSearch={(v) => searchPlaces(v, originTimer, setOriginOptions)}
+                onSelect={(_v, option) =>
+                  setOriginPoint((option as unknown as PlaceOption).place)
+                }
+                onChange={(v) => {
+                  setOrigin(v)
+                  setOriginPoint(null) // 手改文字后坐标失效，避免与实际文字不符
+                }}
+                style={{ width: '100%' }}
+              >
+                <Input
+                  prefix={<LeftOutlined style={{ color: 'var(--jp-ink-3)' }} />}
+                  placeholder="出发地：输入后从下拉选择"
+                />
+              </AutoComplete>
+              <AutoComplete
                 value={destination}
-                onChange={(e) => setDestination(e.target.value)}
-                prefix={<RightOutlined style={{ color: 'var(--jp-ink-3)' }} />}
-                placeholder="目的地，如 广州塔"
-              />
+                options={destOptions}
+                onSearch={(v) => searchPlaces(v, destTimer, setDestOptions)}
+                onSelect={(_v, option) =>
+                  setDestinationPoint((option as unknown as PlaceOption).place)
+                }
+                onChange={(v) => {
+                  setDestination(v)
+                  setDestinationPoint(null)
+                }}
+                style={{ width: '100%' }}
+              >
+                <Input
+                  prefix={<RightOutlined style={{ color: 'var(--jp-ink-3)' }} />}
+                  placeholder="目的地：输入后从下拉选择"
+                />
+              </AutoComplete>
               <Button
                 type="primary"
                 icon={<ThunderboltOutlined />}
@@ -190,6 +273,51 @@ export default function Recommend() {
               >
                 智能规划
               </Button>
+            </div>
+
+            {/* 常用地点：一键填入（点击标签选「设为出发地 / 目的地」） */}
+            {landmarks.length > 0 && (
+              <div style={{ marginTop: 12 }}>
+                <Text style={{ color: 'var(--jp-ink-3)', fontSize: 12, marginRight: 8 }}>
+                  常用地点
+                </Text>
+                <Space wrap size={[6, 6]}>
+                  {landmarks.map((p) => (
+                    <Dropdown
+                      key={p.name}
+                      trigger={['click']}
+                      menu={{
+                        items: [
+                          { key: 'origin', label: '设为出发地' },
+                          { key: 'dest', label: '设为目的地' },
+                        ],
+                        onClick: ({ key }) => {
+                          if (key === 'origin') {
+                            setOrigin(p.name)
+                            setOriginPoint(p)
+                          } else {
+                            setDestination(p.name)
+                            setDestinationPoint(p)
+                          }
+                        },
+                      }}
+                    >
+                      <Tag style={{ cursor: 'pointer', margin: 0 }}>{p.name}</Tag>
+                    </Dropdown>
+                  ))}
+                </Space>
+              </div>
+            )}
+
+            {/* 选点状态：明确告知当前按「坐标」还是「地名」规划 */}
+            <div style={{ marginTop: 10, fontSize: 12, color: 'var(--jp-ink-3)' }}>
+              {originPoint
+                ? `出发地已锁定坐标（${originPoint.lng.toFixed(4)}, ${originPoint.lat.toFixed(4)}）`
+                : '出发地未选点，将按地名解析'}
+              {' · '}
+              {destinationPoint
+                ? `目的地已锁定坐标（${destinationPoint.lng.toFixed(4)}, ${destinationPoint.lat.toFixed(4)}）`
+                : '目的地未选点，将按地名解析'}
             </div>
           </div>
 
