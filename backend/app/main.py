@@ -8,6 +8,7 @@ from app.routers import (
     chat,
     clean,
     feedback,
+    home,
     itinerary,
     knowledge,
     news,
@@ -37,6 +38,7 @@ app.include_router(chat.router)
 app.include_router(recommend.router)
 app.include_router(places.router)
 app.include_router(notes.router)
+app.include_router(home.router)
 
 
 @app.get("/", tags=["系统"])
