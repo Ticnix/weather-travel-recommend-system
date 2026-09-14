@@ -3,7 +3,6 @@ import { ConfigProvider, Spin, theme } from 'antd'
 import zhCN from 'antd/locale/zh_CN'
 import { BrowserRouter, Route, Routes } from 'react-router-dom'
 import MainLayout from './layouts/MainLayout'
-import Placeholder from './pages/Placeholder'
 
 // 路由级懒加载：各页面独立拆包，首屏只加载当前页面所需 chunk，
 // 显著降低首屏 JS 体积（原实现为静态导入，所有页面打进一个 bundle）
@@ -15,6 +14,7 @@ const Feedback = lazy(() => import('./pages/Feedback'))
 const Recommend = lazy(() => import('./pages/Recommend'))
 const Profile = lazy(() => import('./pages/Profile'))
 const Login = lazy(() => import('./pages/Login'))
+const Itinerary = lazy(() => import('./pages/Itinerary'))
 
 // 懒加载兜底：页面 chunk 下载期间展示居中 loading，避免白屏
 function PageLoading() {
@@ -101,12 +101,7 @@ function App() {
             <Route path="/feedback" element={<Feedback />} />
             <Route path="/recommend" element={<Recommend />} />
             <Route path="/profile" element={<Profile />} />
-            <Route
-              path="/itinerary"
-              element={
-                <Placeholder title="我的行程" description="个人行程管理、天气提醒将在后续接入。" />
-              }
-            />
+            <Route path="/itinerary" element={<Itinerary />} />
           </Route>
           </Routes>
         </Suspense>
