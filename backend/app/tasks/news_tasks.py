@@ -30,9 +30,12 @@ def _run(coro):
 
 @celery_app.task(name="app.tasks.news_tasks.collect_weather_news")
 def collect_weather_news(
-    area: str = "广东", with_news: bool = True, with_forecast: bool = True
+    area: str = "广东",
+    with_news: bool = True,
+    with_tavily: bool = True,
+    with_forecast: bool = True,
 ) -> dict:
-    """采集气象资讯（中央气象台预警 + 中国天气网新闻 + 本地未来天气简报）。"""
+    """采集气象资讯（中央气象台预警 + 中国天气网新闻 + Tavily 本地资讯 + 天气简报）。"""
 
     async def _job() -> dict:
         # 局部导入：避免模块级循环依赖
@@ -46,7 +49,11 @@ def collect_weather_news(
         try:
             async with factory() as db:
                 return await collect_all(
-                    db, area_keyword=area, with_news=with_news, with_forecast=with_forecast
+                    db,
+                    area_keyword=area,
+                    with_news=with_news,
+                    with_tavily=with_tavily,
+                    with_forecast=with_forecast,
                 )
         finally:
             await engine.dispose()

@@ -191,6 +191,61 @@ async def collect_news_articles(db: AsyncSession, limit: int = 15) -> dict:
     return {"fetched": len(articles), "created": created}
 
 
+async def collect_tavily_news(
+    db: AsyncSession,
+    query: str = "广州 天气 预警 新闻",
+    limit: int = 8,
+) -> dict:
+    """用 Tavily 联网搜索采集本地气象资讯（需配置 TAVILY_API_KEY）。
+
+    与中央气象台/中国天气网不同，这里是通用搜索结果，目标站点不保证可被 iframe 内嵌，
+    因此只保存标题与摘要文本（不设 source_url），避免详情页出现空白内嵌框。
+    """
+    # 局部导入：避免模块级循环依赖
+    from app.core.config import settings
+    from app.services.web_search_service import _search_tavily
+
+    if not settings.TAVILY_API_KEY:
+        return {"created": 0, "skipped": "未配置 TAVILY_API_KEY"}
+
+    try:
+        results = await _search_tavily(query, limit)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Tavily 资讯采集失败: %s", exc)
+        return {"created": 0, "error": str(exc)}
+
+    created = 0
+    for r in results:
+        title = (r.get("title") or "").strip()[:200]
+        url = (r.get("url") or "").strip()
+        if not title or not url:
+            continue
+        if await db.scalar(select(News.id).where(News.title == title)):
+            continue
+
+        summary = (r.get("content") or "").strip()
+        db.add(
+            News(
+                title=title,
+                content=(
+                    f"【来源】联网搜索\n"
+                    f"【摘要】{summary or '（无摘要）'}\n\n"
+                    f"原文链接：{url}"
+                ),
+                cover_url=None,
+                source_url=None,
+                category=CATEGORY_FORECAST,
+                author="联网搜索",
+                is_published=True,
+                is_top=False,
+            )
+        )
+        created += 1
+
+    await db.commit()
+    return {"fetched": len(results), "created": created}
+
+
 async def collect_alerts(
     db: AsyncSession,
     area_keyword: str = "广东",
@@ -294,15 +349,26 @@ async def collect_all(
     area_keyword: str = "广东",
     with_forecast: bool = True,
     with_news: bool = True,
+    with_tavily: bool = True,
     max_pages: int = 5,
     news_limit: int = 15,
 ) -> dict:
-    """采集全部气象资讯：气象预警（中央气象台）+ 气象新闻（中国天气网）+ 本地天气简报。"""
+    """采集全部气象资讯。数据源：
+
+    - 气象预警：中央气象台（按地区筛选）
+    - 气象新闻：中国天气网
+    - 本地资讯：Tavily 联网搜索（需配置 Key）
+    - 天气简报：本系统天气数据
+    """
     alert_stat = await collect_alerts(db, area_keyword=area_keyword, max_pages=max_pages)
 
     news_stat: dict = {"created": 0}
     if with_news:
         news_stat = await collect_news_articles(db, limit=news_limit)
+
+    tavily_stat: dict = {"created": 0}
+    if with_tavily:
+        tavily_stat = await collect_tavily_news(db)
 
     forecast_stat: dict = {"created": 0}
     if with_forecast:
@@ -311,12 +377,14 @@ async def collect_all(
     total = (
         alert_stat.get("created", 0)
         + news_stat.get("created", 0)
+        + tavily_stat.get("created", 0)
         + forecast_stat.get("created", 0)
     )
     return {
         "area": area_keyword,
         "alerts": alert_stat,
         "news": news_stat,
+        "tavily": tavily_stat,
         "forecast": forecast_stat,
         "created_total": total,
     }
