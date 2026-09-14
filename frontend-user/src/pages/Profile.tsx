@@ -20,8 +20,11 @@ import {
   LogoutOutlined,
   ClockCircleOutlined,
   CommentOutlined,
+  CalendarOutlined,
+  EnvironmentOutlined,
 } from '@ant-design/icons'
 import { listMyFeedback, type FeedbackItem } from '../api/feedback'
+import { listItinerary, type ItineraryItem } from '../api/itinerary'
 import {
   clearAuth,
   fetchMe,
@@ -43,6 +46,7 @@ export default function Profile() {
   const navigate = useNavigate()
   const [user, setUser] = useState<AuthUser | null>(null)
   const [feedback, setFeedback] = useState<FeedbackItem[]>([])
+  const [itinerary, setItinerary] = useState<ItineraryItem[]>([])
   const [loading, setLoading] = useState(true)
   const [loggingOut, setLoggingOut] = useState(false)
 
@@ -60,6 +64,10 @@ export default function Profile() {
       listMyFeedback()
         .then((res) => setFeedback(res.items))
         .catch(() => setFeedback([])),
+      // 「我的」页直接展示行程概览，此前这里只是一块写着"开发中"的占位
+      listItinerary()
+        .then((res) => setItinerary(res.items))
+        .catch(() => setItinerary([])),
     ]).finally(() => setLoading(false))
   }, [loggedIn])
 
@@ -68,6 +76,7 @@ export default function Profile() {
     clearAuth()
     setUser(null)
     setFeedback([])
+    setItinerary([])
     setLoggingOut(false)
     navigate('/')
   }
@@ -234,14 +243,58 @@ export default function Profile() {
         </div>
       )}
 
-      {/* 预留：我的行程 / 推荐收藏 */}
+      {/* 我的行程概览（数据来自 /itinerary，此前是"开发中"占位） */}
       <div className="jp-card" style={{ padding: 24 }}>
-        <div className="jp-serif" style={{ fontSize: 16, fontWeight: 600, marginBottom: 8, color: 'var(--jp-ink)' }}>
-          我的行程
-        </div>
-        <Paragraph style={{ margin: 0, color: 'var(--jp-ink-2)' }}>
-          结合天气的出行提醒、收藏的路线将在登录后展示（开发中）。
-        </Paragraph>
+        <Row justify="space-between" align="middle" style={{ marginBottom: 12 }}>
+          <div
+            className="jp-serif"
+            style={{ fontSize: 16, fontWeight: 600, color: 'var(--jp-ink)' }}
+          >
+            <CalendarOutlined /> 我的行程
+          </div>
+          <Button size="small" onClick={() => navigate('/itinerary')}>
+            查看全部
+          </Button>
+        </Row>
+
+        {!loggedIn ? (
+          <Paragraph style={{ margin: 0, color: 'var(--jp-ink-2)' }}>
+            登录后可查看行程安排，并获得结合天气的出行提醒。
+          </Paragraph>
+        ) : loading ? (
+          <Text style={{ color: 'var(--jp-ink-2)' }}>加载中…</Text>
+        ) : itinerary.length === 0 ? (
+          <Empty description="还没有行程安排" style={{ padding: 16 }}>
+            <Button type="primary" size="small" onClick={() => navigate('/itinerary')}>
+              去添加行程
+            </Button>
+          </Empty>
+        ) : (
+          <Space direction="vertical" size={10} style={{ width: '100%' }}>
+            {itinerary.slice(0, 5).map((it) => (
+              <div
+                key={it.id}
+                style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}
+              >
+                <Tag color="blue" icon={<CalendarOutlined />} style={{ margin: 0 }}>
+                  {it.date}
+                </Tag>
+                {it.start_time && <Tag style={{ margin: 0 }}>{it.start_time}</Tag>}
+                <Text style={{ color: 'var(--jp-ink)', fontWeight: 600 }}>{it.title}</Text>
+                {it.location && (
+                  <Text style={{ color: 'var(--jp-ink-3)', fontSize: 12 }}>
+                    <EnvironmentOutlined /> {it.location}
+                  </Text>
+                )}
+              </div>
+            ))}
+            {itinerary.length > 5 && (
+              <Text style={{ color: 'var(--jp-ink-3)', fontSize: 12 }}>
+                共 {itinerary.length} 条，此处仅展示前 5 条
+              </Text>
+            )}
+          </Space>
+        )}
       </div>
     </Space>
   )
