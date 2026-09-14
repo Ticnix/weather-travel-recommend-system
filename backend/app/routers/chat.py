@@ -2,12 +2,15 @@
 
 import json
 import uuid
+from typing import Annotated
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.ext.asyncio import AsyncSession
 from sse_starlette.sse import EventSourceResponse
 
-from app.core.deps import OptionalUser
+from app.core.deps import CurrentUser, OptionalUser
 from app.core.response import success
+from app.db.session import get_db
 from app.schemas.chat import ChatRequest, ChatResponse
 from app.services import agent, chat_history_service
 
@@ -74,3 +77,47 @@ async def chat_stream(body: ChatRequest, current: OptionalUser = None):
                 await chat_history_service.add_message(user_id, conversation_id, "assistant", full_answer)
 
     return EventSourceResponse(event_generator())
+
+
+@router.get("/conversations", response_model=dict)
+async def list_conversations(
+    current: CurrentUser,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> dict:
+    """历史会话列表（需登录），按最后活跃时间倒序。
+
+    此前只把消息存库供多轮上下文使用，没有对外读取接口，
+    导致刷新页面后用户看不到任何历史对话。
+    """
+    items = await chat_history_service.list_conversations(current.id, db=db)
+    return success({"items": items, "total": len(items)})
+
+
+@router.get("/conversations/{conversation_id}", response_model=dict)
+async def get_conversation(
+    conversation_id: str,
+    current: CurrentUser,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> dict:
+    """读取某个会话的全部消息（时间正序），供前端回放历史对话。"""
+    items = await chat_history_service.get_conversation_messages(
+        current.id, conversation_id, db=db
+    )
+    return success(
+        {"conversation_id": conversation_id, "items": items, "total": len(items)}
+    )
+
+
+@router.delete("/conversations/{conversation_id}", response_model=dict)
+async def delete_conversation(
+    conversation_id: str,
+    current: CurrentUser,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> dict:
+    """删除某个历史会话。"""
+    deleted = await chat_history_service.delete_conversation(
+        current.id, conversation_id, db=db
+    )
+    if deleted == 0:
+        raise HTTPException(status_code=404, detail="会话不存在")
+    return success({"deleted": deleted}, message="会话已删除")
