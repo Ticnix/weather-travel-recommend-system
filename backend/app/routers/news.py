@@ -61,16 +61,18 @@ async def collect_news(
     current: CurrentUser,
     db: Annotated[AsyncSession, Depends(get_db)],
     area: str = "广东",
+    with_news: bool = True,
     with_forecast: bool = True,
 ) -> dict:
-    """采集真实气象资讯：中央气象台预警 + 本地未来天气简报（需登录）。
+    """采集真实气象资讯（需登录）。
 
     - area：预警筛选的地区关键词（默认「广东」，传空字符串表示不限地区）
-    - with_forecast：是否同时生成一份未来天气简报
+    - with_news：是否采集中国天气网气象新闻
+    - with_forecast：是否生成一份本地未来天气简报
     采集结果按标题去重，可重复调用。
     """
     stat = await weather_news_service.collect_all(
-        db, area_keyword=area, with_forecast=with_forecast
+        db, area_keyword=area, with_news=with_news, with_forecast=with_forecast
     )
     # 资讯内容有更新，清掉列表缓存
     await cache_delete_prefix("news:list:")

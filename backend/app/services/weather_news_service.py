@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import logging
 from datetime import date
+from html.parser import HTMLParser
 
 import httpx
 from sqlalchemy import select
@@ -22,6 +23,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.news import News
 
 logger = logging.getLogger(__name__)
+
+# 中国天气网资讯（气象新闻）—— 详情页同样支持 https 内嵌
+WEATHER_NEWS_URL = "https://news.weather.com.cn/"
+WEATHER_NEWS_BASE = "https://news.weather.com.cn"
 
 NMC_ALARM_URL = "http://www.nmc.cn/rest/findAlarm"
 # 原文链接统一用 https：详情页会以 iframe 内嵌展示原文，
@@ -83,6 +88,107 @@ async def fetch_alerts(
                     }
                 )
     return results
+
+
+class _LinkParser(HTMLParser):
+    """提取页面中的 <a> 文本与 href。"""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.links: list[tuple[str, str]] = []
+        self._href: str | None = None
+        self._text: str = ""
+
+    def handle_starttag(self, tag, attrs):
+        if tag == "a":
+            self._href = dict(attrs).get("href", "")
+            self._text = ""
+
+    def handle_data(self, data):
+        if self._href is not None:
+            self._text += data.strip()
+
+    def handle_endtag(self, tag):
+        if tag == "a" and self._href:
+            self.links.append((self._href, self._text))
+            self._href = None
+
+
+async def fetch_weather_news(limit: int = 15) -> list[dict]:
+    """抓取中国天气网资讯频道的新闻列表。
+
+    返回：[{title, url}, ...]，url 统一为 https 绝对地址（详情页要内嵌展示）。
+    """
+    async with httpx.AsyncClient(
+        timeout=15.0, headers=_HEADERS, follow_redirects=True
+    ) as client:
+        try:
+            resp = await client.get(WEATHER_NEWS_URL)
+            resp.raise_for_status()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("抓取中国天气网资讯失败: %s", exc)
+            return []
+
+    resp.encoding = "utf-8"
+    parser = _LinkParser()
+    parser.feed(resp.text)
+
+    results: list[dict] = []
+    seen: set[str] = set()
+    for href, text in parser.links:
+        # 站点会在标题前加「推荐」等前缀，这里清理掉
+        title = text.strip().lstrip("推荐").strip()
+        if not href or not (8 <= len(title) <= 80):
+            continue
+        # 排除视频/生活类栏目，只保留资讯正文页
+        if "/video/" in href or "/life/" in href:
+            continue
+        if not (".shtml" in href or "/2026" in href or "/2025" in href):
+            continue
+
+        url = href if href.startswith("http") else WEATHER_NEWS_BASE + href
+        url = url.replace("http://", "https://")  # 统一 https，避免 iframe 混合内容
+        if url in seen:
+            continue
+        seen.add(url)
+        results.append({"title": title, "url": url})
+        if len(results) >= limit:
+            break
+
+    return results
+
+
+async def collect_news_articles(db: AsyncSession, limit: int = 15) -> dict:
+    """采集中国天气网气象新闻并写入 news 表（按标题去重）。"""
+    articles = await fetch_weather_news(limit=limit)
+    created = 0
+
+    for a in articles:
+        exists = await db.scalar(select(News.id).where(News.title == a["title"]))
+        if exists:
+            continue
+
+        db.add(
+            News(
+                title=a["title"][:200],
+                content=(
+                    f"【来源】中国天气网\n"
+                    f"【标题】{a['title']}\n\n"
+                    f"本条为气象资讯，完整内容请查看下方内嵌的原文页面。\n"
+                    f"原文链接：{a['url']}"
+                ),
+                cover_url=None,
+                source_url=a["url"],
+                category=CATEGORY_FORECAST,  # 归入普通资讯
+                author="中国天气网",
+                is_published=True,
+                is_top=False,
+            )
+        )
+        created += 1
+
+    await db.commit()
+    return {"fetched": len(articles), "created": created}
 
 
 async def collect_alerts(
@@ -187,17 +293,30 @@ async def collect_all(
     db: AsyncSession,
     area_keyword: str = "广东",
     with_forecast: bool = True,
+    with_news: bool = True,
     max_pages: int = 5,
+    news_limit: int = 15,
 ) -> dict:
-    """采集全部气象资讯：预警 + 天气简报。"""
+    """采集全部气象资讯：气象预警（中央气象台）+ 气象新闻（中国天气网）+ 本地天气简报。"""
     alert_stat = await collect_alerts(db, area_keyword=area_keyword, max_pages=max_pages)
-    forecast_stat = {"created": 0}
+
+    news_stat: dict = {"created": 0}
+    if with_news:
+        news_stat = await collect_news_articles(db, limit=news_limit)
+
+    forecast_stat: dict = {"created": 0}
     if with_forecast:
         forecast_stat = await collect_forecast_digest(db)
 
+    total = (
+        alert_stat.get("created", 0)
+        + news_stat.get("created", 0)
+        + forecast_stat.get("created", 0)
+    )
     return {
         "area": area_keyword,
         "alerts": alert_stat,
+        "news": news_stat,
         "forecast": forecast_stat,
-        "created_total": alert_stat.get("created", 0) + forecast_stat.get("created", 0),
+        "created_total": total,
     }
