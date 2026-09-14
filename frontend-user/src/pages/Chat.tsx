@@ -2,6 +2,8 @@ import { Avatar, Button, Input, Space, Typography, Spin } from 'antd'
 import { RobotOutlined, SendOutlined, UserOutlined, ThunderboltOutlined } from '@ant-design/icons'
 import { useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
+import MarkdownPreview from '@uiw/react-markdown-preview'
+import '@uiw/react-markdown-preview/markdown.css'
 
 const { Paragraph } = Typography
 const { TextArea } = Input
@@ -191,13 +193,32 @@ export default function Chat() {
                         color: msg.role === 'user' ? '#fffdf9' : 'var(--jp-ink)',
                         padding: '10px 14px',
                         borderRadius: 14,
-                        whiteSpace: 'pre-wrap',
+                        whiteSpace: msg.role === 'user' ? 'pre-wrap' : undefined,
                         wordBreak: 'break-word',
                         boxShadow: 'var(--jp-shadow-sm)',
                       }}
                     >
-                      {msg.content}
-                      {msg.streaming && msg.content === '' && <Spin size="small" />}
+                      {msg.role === 'assistant' ? (
+                        msg.content ? (
+                          /* AI 输出的是 Markdown：需渲染成排版。
+                             此前直接当纯文本输出，导致 ** 与 - 等标记裸显 */
+                          <div className="jp-chat-md" data-color-mode="light">
+                            <MarkdownPreview
+                              source={msg.content}
+                              style={{
+                                background: 'transparent',
+                                color: 'var(--jp-ink)',
+                                fontSize: 14,
+                                lineHeight: 1.75,
+                              }}
+                            />
+                          </div>
+                        ) : (
+                          <Spin size="small" />
+                        )
+                      ) : (
+                        msg.content
+                      )}
                     </div>
                   </div>
                   {msg.role === 'user' && (

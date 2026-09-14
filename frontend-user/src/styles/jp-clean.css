@@ -135,3 +135,89 @@ body {
 .jp-hide-scrollbar::-webkit-scrollbar {
   display: none;
 }
+
+/* ===== AI 对话气泡内的 Markdown 排版 ===== */
+/* MarkdownPreview 自带白底与宽松间距，这里改为跟随气泡样式，视觉更紧凑 */
+.jp-chat-md .wmde-markdown {
+  background: transparent;
+  color: inherit;
+  font-size: 14px;
+  line-height: 1.75;
+  font-family: inherit;
+}
+
+.jp-chat-md .wmde-markdown p {
+  margin: 0 0 8px;
+}
+
+.jp-chat-md .wmde-markdown p:last-child {
+  margin-bottom: 0;
+}
+
+.jp-chat-md .wmde-markdown h1,
+.jp-chat-md .wmde-markdown h2,
+.jp-chat-md .wmde-markdown h3,
+.jp-chat-md .wmde-markdown h4 {
+  margin: 12px 0 6px;
+  font-size: 15px;
+  font-weight: 700;
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.jp-chat-md .wmde-markdown ul,
+.jp-chat-md .wmde-markdown ol {
+  margin: 4px 0 8px;
+  padding-left: 20px;
+}
+
+.jp-chat-md .wmde-markdown li {
+  margin: 2px 0;
+}
+
+.jp-chat-md .wmde-markdown li::marker {
+  color: var(--jp-indigo);
+}
+
+.jp-chat-md .wmde-markdown strong {
+  color: var(--jp-ink);
+  font-weight: 700;
+}
+
+.jp-chat-md .wmde-markdown code {
+  background: rgba(59, 91, 140, 0.1);
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 13px;
+}
+
+.jp-chat-md .wmde-markdown pre {
+  background: rgba(0, 0, 0, 0.04);
+  border-radius: 8px;
+  padding: 10px 12px;
+  overflow-x: auto;
+}
+
+.jp-chat-md .wmde-markdown blockquote {
+  margin: 6px 0;
+  padding-left: 10px;
+  border-left: 3px solid var(--jp-border-strong);
+  color: var(--jp-ink-2);
+}
+
+.jp-chat-md .wmde-markdown table {
+  border-collapse: collapse;
+  margin: 6px 0;
+}
+
+.jp-chat-md .wmde-markdown th,
+.jp-chat-md .wmde-markdown td {
+  border: 1px solid var(--jp-border);
+  padding: 4px 8px;
+}
+
+.jp-chat-md .wmde-markdown hr {
+  border: none;
+  border-top: 1px solid var(--jp-border);
+  margin: 10px 0;
+}
