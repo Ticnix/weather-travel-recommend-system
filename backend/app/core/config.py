@@ -115,6 +115,18 @@ class Settings(BaseSettings):
     EMBED_DIM: int = 1024  # 向量维度（与智谱 embedding-3 dimensions=1024 对齐，匹配 Vector(1024)）
     EMBED_TOP_K: int = 5  # 检索返回的 TopK
 
+    # ===== Web Push 通知（Day 34，VAPID 协议）=====
+    VAPID_PRIVATE_KEY: str = ""  # base64url 编码的 P-256 私钥（不入库）
+    VAPID_PUBLIC_KEY: str = ""  # 前端 subscribe 用的 applicationServerKey
+    VAPID_CONTACT: str = "mailto:admin@weather-travel.local"  # 推送服务联系邮箱
+
+    # ===== 邮件通道（SMTP 全部留空则通道自动禁用，发送时记为 skipped）=====
+    SMTP_HOST: str = ""
+    SMTP_PORT: int = 465
+    SMTP_USER: str = ""
+    SMTP_PASSWORD: str = ""
+    SMTP_FROM: str = ""
+
 
 @lru_cache
 def get_settings() -> Settings:

@@ -19,6 +19,7 @@ from app.routers import (
     knowledge,
     news,
     notes,
+    notifications,
     places,
     recommend,
     user_knowledge,
@@ -37,6 +38,7 @@ register_exception_handlers(app)
 # 挂载业务路由
 app.include_router(users.router)
 app.include_router(news.router)
+app.include_router(notifications.router)
 app.include_router(feedback.router)
 app.include_router(weather.router)
 app.include_router(clean.router)

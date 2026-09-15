@@ -32,6 +32,7 @@ import {
   isLoggedIn,
   type AuthUser,
 } from '../api/auth'
+import NotificationSettings from '../components/NotificationSettings'
 
 const { Title, Paragraph, Text } = Typography
 
@@ -296,6 +297,9 @@ export default function Profile() {
           </Space>
         )}
       </div>
+
+      {/* 通知设置（Day 34）：Web Push 订阅授权 / 退订 / 测试 / 发送记录 */}
+      {loggedIn && <NotificationSettings />}
     </Space>
   )
 }
