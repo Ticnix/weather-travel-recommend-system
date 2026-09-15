@@ -70,7 +70,9 @@ services:
       # 容器内需用 compose 服务名互访，覆盖 .env 中本地开发的 127.0.0.1
       DB_URL: postgresql+asyncpg://admin:123456@postgres:5432/weather_db
       REDIS_URL: redis://redis:6379/0
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+    # --no-access-log：请求日志由应用中间件输出（含 request_id/耗时/路由模板），
+    # uvicorn 自带的 access log 与其重复且无 request_id，只会在日志里制造噪音
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --no-access-log
     ports:
       - "8000:8000"
     depends_on:

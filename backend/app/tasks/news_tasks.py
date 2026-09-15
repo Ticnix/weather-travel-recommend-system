@@ -27,14 +27,24 @@ def _run(coro):
     return _get_loop().run_until_complete(coro)
 
 
-@celery_app.task(name="app.tasks.news_tasks.collect_weather_news")
+@celery_app.task(
+    name="app.tasks.news_tasks.collect_weather_news",
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    retry_backoff_max=60,
+    retry_jitter=True,
+    retry_kwargs={"max_retries": 3},
+)
 def collect_weather_news(
     area: str = "广州",
     with_news: bool = True,
     with_tavily: bool = True,
     with_forecast: bool = True,
 ) -> dict:
-    """采集气象资讯（中央气象台预警 + 中国天气网新闻 + Tavily 本地资讯 + 天气简报）。"""
+    """采集气象资讯（中央气象台预警 + 中国天气网新闻 + Tavily 本地资讯 + 天气简报）。
+
+    采集依赖多个外部数据源，瞬时报错很常见——这正是自动重试最大的受益场景。
+    """
 
     async def _job() -> dict:
         # 局部导入：避免模块级循环依赖
@@ -57,10 +67,6 @@ def collect_weather_news(
         finally:
             await engine.dispose()
 
-    try:
-        stat = _run(_job())
-        logger.info("气象资讯采集完成: %s", stat)
-        return {"ok": True, **stat}
-    except Exception as exc:
-        logger.exception("气象资讯采集失败")
-        return {"ok": False, "error": str(exc)}
+    stat = _run(_job())
+    logger.info("气象资讯采集完成: %s", stat)
+    return {"ok": True, **stat}

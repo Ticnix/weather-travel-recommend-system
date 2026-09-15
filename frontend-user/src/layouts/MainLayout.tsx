@@ -18,6 +18,7 @@ import {
   isLoggedIn,
   type AuthUser,
 } from '../api/auth'
+import ErrorBoundary from '../components/ErrorBoundary'
 
 const { Header, Content, Footer } = Layout
 const { Title } = Typography
@@ -128,7 +129,10 @@ export default function MainLayout() {
       </Header>
 
       <Content style={{ padding: '28px 24px', maxWidth: 1100, width: '100%', margin: '0 auto' }}>
-        <Outlet />
+        {/* 页面级错误边界：单个页面崩溃时只替换内容区，导航仍然可用 */}
+        <ErrorBoundary>
+          <Outlet />
+        </ErrorBoundary>
       </Content>
 
       <Footer style={{ textAlign: 'center', color: 'var(--jp-ink-3)', background: 'transparent', borderTop: '1px solid var(--jp-border)' }}>

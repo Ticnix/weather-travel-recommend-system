@@ -22,13 +22,16 @@ def _run(coro):
     return _get_loop().run_until_complete(coro)
 
 
-@celery_app.task(name="app.tasks.rag_tasks.build_index_task")
+@celery_app.task(
+    name="app.tasks.rag_tasks.build_index_task",
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    retry_backoff_max=60,
+    retry_jitter=True,
+    retry_kwargs={"max_retries": 3},
+)
 def build_index_task() -> dict:
-    """异步重建知识库向量索引。"""
-    try:
-        stats = _run(build_index(use_celery_engine=True))
-        logger.info("知识库索引构建成功：%s", stats)
-        return {"ok": True, **stats}
-    except Exception as e:
-        logger.exception("知识库索引构建失败")
-        return {"ok": False, "error": str(e)}
+    """异步重建知识库向量索引（失败自动重试，异常上抛触发全局告警）。"""
+    stats = _run(build_index(use_celery_engine=True))
+    logger.info("知识库索引构建成功：%s", stats)
+    return {"ok": True, **stats}

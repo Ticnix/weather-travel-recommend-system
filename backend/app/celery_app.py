@@ -45,3 +45,37 @@ celery_app.conf.update(
         },
     },
 )
+
+
+# ---------------------------------------------------------------------------
+# 任务失败全局告警（信号钩子：一处代码覆盖所有任务）
+#
+# 设计说明：告警走结构化日志而不是邮件——本机没有 SMTP 配置，
+# 且日志已按 JSON 字段化，接告警平台时按 level=ERROR + logger=celery.alert 过滤即可。
+# 邮件等通知渠道等真有值守需求时再作为扩展点接入。
+# ---------------------------------------------------------------------------
+import logging  # noqa: E402
+
+from celery.signals import task_failure  # noqa: E402
+
+alert_logger = logging.getLogger("celery.alert")
+
+
+@task_failure.connect
+def _alert_on_task_failure(
+    sender=None,
+    task_id: str | None = None,
+    exception: BaseException | None = None,
+    retries: int = 0,
+    **_: object,
+) -> None:
+    """任务最终失败（重试耗尽）时的统一告警入口。"""
+    alert_logger.error(
+        "Celery 任务最终失败",
+        extra={
+            "task": getattr(sender, "name", str(sender)),
+            "task_id": task_id,
+            "retries": retries,
+        },
+        exc_info=exception,  # 异常实例（logging 3.5+ 支持），自动附上堆栈
+    )
