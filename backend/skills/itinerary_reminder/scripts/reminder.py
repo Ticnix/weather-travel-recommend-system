@@ -115,5 +115,7 @@ async def run(user_id: int, query: str) -> str:
         lines.append(line)
 
     lines.append(f"\n当天天气：\n{weather_text}")
-    lines.append("\n请基于以上行程和天气，逐条给出出行提醒与推荐（如雨天提醒带伞、高温提醒防晒补水、户外活动是否建议改期等）。")
+    lines.append(
+        "\n请基于以上行程和天气，逐条给出出行提醒与推荐（如雨天提醒带伞、高温提醒防晒补水、户外活动是否建议改期等）。"
+    )
     return "\n".join(lines)

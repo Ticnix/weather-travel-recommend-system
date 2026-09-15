@@ -6,6 +6,7 @@
 """
 
 from types import SimpleNamespace
+from typing import ClassVar
 
 import pytest
 
@@ -43,19 +44,33 @@ def patch_deps(monkeypatch):
     """打桩外部依赖，返回一个可调整行为的控制器。"""
 
     class Ctl:
-        routes = [
+        # ClassVar：这些都是「测试控制器」的类级配置而非实例属性，
+        # 标注后既语义清晰，也避免 lint 把它当成可变默认值
+        routes: ClassVar[list] = [
             _route("驾车", 20, 8.0, 6.0),
             _route("地铁/公交", 35, 7.0, 2.0),
             _route("骑行", 50, 7.5, 0.0),
         ]
-        weather = _weather()
-        weather_error = False
-        route_error = None
+        weather: ClassVar[dict] = _weather()
+        weather_error: ClassVar[bool] = False
+        route_error: ClassVar[str | None] = None
 
-    async def fake_plan_route(origin, destination, city=None, origin_point=None, destination_point=None):
+    async def fake_plan_route(
+        origin, destination, city=None, origin_point=None, destination_point=None
+    ):
         if Ctl.route_error:
-            return {"origin": origin, "destination": destination, "routes": [], "error": Ctl.route_error}
-        return {"origin": origin, "destination": destination, "mode": "driving", "routes": Ctl.routes}
+            return {
+                "origin": origin,
+                "destination": destination,
+                "routes": [],
+                "error": Ctl.route_error,
+            }
+        return {
+            "origin": origin,
+            "destination": destination,
+            "mode": "driving",
+            "routes": Ctl.routes,
+        }
 
     async def fake_fetch_weather(city=None):
         if Ctl.weather_error:
@@ -151,10 +166,16 @@ class TestPlanStructuredErrors:
     async def test_坐标参数透传给路线规划(self, monkeypatch):
         captured = {}
 
-        async def fake_plan_route(origin, destination, city=None, origin_point=None, destination_point=None):
+        async def fake_plan_route(
+            origin, destination, city=None, origin_point=None, destination_point=None
+        ):
             captured["o"] = origin_point
             captured["d"] = destination_point
-            return {"origin": origin, "destination": destination, "routes": [_route("驾车", 10, 5, 1)]}
+            return {
+                "origin": origin,
+                "destination": destination,
+                "routes": [_route("驾车", 10, 5, 1)],
+            }
 
         async def fake_fetch_weather(city=None):
             return _weather()
@@ -163,7 +184,8 @@ class TestPlanStructuredErrors:
         monkeypatch.setattr(rp, "fetch_weather", fake_fetch_weather)
 
         await rp.plan_structured(
-            "A", "B",
+            "A",
+            "B",
             origin_point={"lng": 113.3, "lat": 23.1},
             destination_point={"lng": 113.4, "lat": 23.2},
         )

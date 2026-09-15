@@ -1,4 +1,4 @@
-﻿from pgvector.sqlalchemy import Vector
+from pgvector.sqlalchemy import Vector
 from sqlalchemy import Integer, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
@@ -14,9 +14,7 @@ class KnowledgeChunk(Base, TimestampMixin):
     """
 
     __tablename__ = "knowledge_chunks"
-    __table_args__ = (
-        UniqueConstraint("source", "chunk_index", name="uq_knowledge_source_chunk"),
-    )
+    __table_args__ = (UniqueConstraint("source", "chunk_index", name="uq_knowledge_source_chunk"),)
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     title: Mapped[str] = mapped_column(String(255), nullable=False)

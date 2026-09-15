@@ -72,11 +72,15 @@ def _build_rules(temp: float, weather_desc: str, scene: str | None) -> list[str]
     return rules
 
 
-async def run(city: str | None = None, scene: str | None = None, preference: str | None = None) -> str:
+async def run(
+    city: str | None = None, scene: str | None = None, preference: str | None = None
+) -> str:
     """穿搭推荐主入口，返回结构化文本（交给 LLM 生成最终建议）。"""
     data = await outfit_structured(city, scene, preference)
     weather = data["weather"]
-    weather_ctx = f"气温最高 {weather['temp']}°C，天气 {weather['desc']}，降水 {weather['precip']}mm"
+    weather_ctx = (
+        f"气温最高 {weather['temp']}°C，天气 {weather['desc']}，降水 {weather['precip']}mm"
+    )
     lines = [f"【气象参数】{weather_ctx}", "【穿搭规则】"]
     lines += [f"- {r}" for r in data["rules"]]
     if data["preference_rule"]:
@@ -84,7 +88,9 @@ async def run(city: str | None = None, scene: str | None = None, preference: str
     if data["knowledge"]:
         lines.append("【知识库参考】")
         lines.append(data["knowledge"])
-    lines.append("\n请基于以上信息，用简洁友好的中文生成具体的穿搭建议（上衣/下装/鞋/配饰，可分点），并说明理由。")
+    lines.append(
+        "\n请基于以上信息，用简洁友好的中文生成具体的穿搭建议（上衣/下装/鞋/配饰，可分点），并说明理由。"
+    )
     return "\n".join(lines)
 
 
@@ -114,9 +120,7 @@ async def outfit_structured(
     precip = (daily.precipitation_sum if daily else bundle.current.precipitation) or 0
 
     rules = _build_rules(temp, weather_desc, scene)
-    temp_rule = next(
-        (rule for (lo, hi), rule in TEMP_RULES if lo <= temp < hi), None
-    )
+    temp_rule = next((rule for (lo, hi), rule in TEMP_RULES if lo <= temp < hi), None)
 
     pref_rule = ""
     if preference:

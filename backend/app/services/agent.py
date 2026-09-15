@@ -52,24 +52,24 @@ INTENT_SYSTEM_PROMPT = (
 GENERATE_SYSTEM_PROMPT = (
     "你是「广州天气旅行助手」，一个专业的本地出行服务 AI。\n"
     "请遵循以下决策规则：\n"
-    "1. 一个复合问题往往同时涉及多个方面（如\"明天去广州塔穿什么、怎么去\"同时涉及天气+穿搭+路线），"
+    '1. 一个复合问题往往同时涉及多个方面（如"明天去广州塔穿什么、怎么去"同时涉及天气+穿搭+路线），'
     "此时必须逐一调用所有相关工具：先 get_weather 查天气，再 recommend_outfit 出穿搭，"
     "再 plan_travel_route 出路线，最后整合成完整回答，不要只答其中一部分。\n"
     "2. 若需要实时数据，优先调用对应工具：天气/预报用 get_weather/get_forecast，"
     "本地攻略知识用 search_knowledge，资讯用 search_news。\n"
     "3. 若问题涉及实时性/时效性信息且上述工具覆盖不到（如景区当天开放情况、"
     "最新活动、门票价格、时事新闻），则调用 web_search 联网搜索。\n"
-    "4. 若问题涉及用户上传的资料/笔记（如\"我上传的攻略\"\"我收藏的资料\"等文档内容），"
+    '4. 若问题涉及用户上传的资料/笔记（如"我上传的攻略""我收藏的资料"等文档内容），'
     "则调用 search_my_plans 检索该用户的私有知识库（面向文档资料，不是行程表）。\n"
-    "5. 若问题涉及用户自己添加的行程安排、或需结合天气给出提醒（如\"明天有什么安排\""
-    "\"我的行程\"\"后天要注意什么\"\"行程当天天气\"），必须调用 check_itinerary_weather"
+    '5. 若问题涉及用户自己添加的行程安排、或需结合天气给出提醒（如"明天有什么安排"'
+    '"我的行程""后天要注意什么""行程当天天气"），必须调用 check_itinerary_weather'
     "查询结构化行程表，不要用 search_my_plans。\n"
-    "6. 若问题涉及从A地到B地的路线/交通方式（如\"从广州南站到广州塔怎么走\""
-    "\"去白云山坐地铁还是打车\"），则调用 plan_travel_route 出行规划。"
+    '6. 若问题涉及从A地到B地的路线/交通方式（如"从广州南站到广州塔怎么走"'
+    '"去白云山坐地铁还是打车"），则调用 plan_travel_route 出行规划。'
     "若用户未给出出发地，先用默认出发地（广州中心城区）给出参考方案，"
     "同时礼貌询问实际出发地以便精化。\n"
-    "7. 若问题涉及穿什么衣服/穿搭建议（如\"明天爬山穿什么\"\"下雨天逛街穿什么\""
-    "\"我怕冷怎么穿\"），则调用 recommend_outfit 穿搭推荐，并把用户提到的"
+    '7. 若问题涉及穿什么衣服/穿搭建议（如"明天爬山穿什么""下雨天逛街穿什么"'
+    '"我怕冷怎么穿"），则调用 recommend_outfit 穿搭推荐，并把用户提到的'
     "场景（爬山/逛街等）和偏好（怕冷/正式等）作为参数传入。\n"
     "8. 若问题可直接回答，则直接简洁作答。\n"
     "9. 能回答的部分先回答，确实缺失的关键信息（如具体出发地）再单独反问，"
@@ -100,17 +100,53 @@ _INTENT_KEYWORDS: dict[str, tuple[str, ...]] = {
 #       弱词（如「去」「推荐」）仍只作为 LLM 分类失败时的兜底。
 _STRONG_INTENT_KEYWORDS: dict[str, tuple[str, ...]] = {
     "weather": (
-        "天气", "气温", "多少度", "几度", "下雨", "降雨", "晴天", "阴天",
-        "台风", "降水", "湿度", "预报", "冷吗", "热吗",
+        "天气",
+        "气温",
+        "多少度",
+        "几度",
+        "下雨",
+        "降雨",
+        "晴天",
+        "阴天",
+        "台风",
+        "降水",
+        "湿度",
+        "预报",
+        "冷吗",
+        "热吗",
     ),
     "outfit": ("穿搭", "穿什么", "怎么穿", "该穿", "穿衣服", "着装", "穿多少", "穿鞋"),
     "travel": (
-        "路线", "怎么走", "怎么去", "出行", "交通", "地铁", "公交", "驾车",
-        "开车", "打车", "行程", "日程", "安排", "多远", "多久能到", "怎么到达",
+        "路线",
+        "怎么走",
+        "怎么去",
+        "出行",
+        "交通",
+        "地铁",
+        "公交",
+        "驾车",
+        "开车",
+        "打车",
+        "行程",
+        "日程",
+        "安排",
+        "多远",
+        "多久能到",
+        "怎么到达",
     ),
     "knowledge": (
-        "景点", "美食", "好吃", "好玩", "攻略", "酒店", "住宿",
-        "特产", "历史", "文化", "哪里玩", "哪里吃",
+        "景点",
+        "美食",
+        "好吃",
+        "好玩",
+        "攻略",
+        "酒店",
+        "住宿",
+        "特产",
+        "历史",
+        "文化",
+        "哪里玩",
+        "哪里吃",
     ),
 }
 
@@ -186,11 +222,12 @@ async def _classify_intent(state: AgentState) -> dict:
         # 若用户输入明显指向某类意图（含"天气/穿/出行"等强词），则覆盖为对应意图，
         # 避免明确的天气/穿搭/出行问题被误判为 other 而不绑定工具。
         kw = _keyword_intent(user_text)
-        if intent not in ("weather", "outfit", "travel", "knowledge") or (
-            intent == "other" and kw != "other"
-        ):
-            if kw != "other":
-                intent = kw
+        # 两层条件原本是嵌套的，合并后语义不变（内层条件提到外层做与运算）
+        llm_unclear = (
+            intent not in ("weather", "outfit", "travel", "knowledge") or intent == "other"
+        )
+        if llm_unclear and kw != "other":
+            intent = kw
         logger.info("意图识别 raw=[%s] -> %s", raw[:60], intent)
     except Exception as exc:  # noqa: BLE001 LLM 失败降级到关键词
         logger.warning("意图识别 LLM 调用失败，降级到关键词规则: %s", exc)
@@ -222,7 +259,7 @@ async def _agent_node(state: AgentState) -> dict:
     messages = state["messages"]
     try:
         resp = await llm_with_tools.ainvoke([("system", system), *messages])
-    except Exception as exc:  # noqa: BLE001 LLM 失败交给 handle_error
+    except Exception as exc:
         logger.exception("LLM 生成节点调用失败: %s", exc)
         return {"error": str(exc)}
 
@@ -336,7 +373,7 @@ async def chat(
         ag = await _get_agent()
         result = await ag.ainvoke(initial)
         return {"intent": result.get("intent", ""), "answer": result.get("answer", "")}
-    except Exception as exc:  # noqa: BLE001 统一兜底，避免接口 500
+    except Exception as exc:
         logger.exception("对话异常: %s", exc)
         return {"intent": "other", "answer": "抱歉，AI 服务暂时不可用，请稍后重试。"}
     finally:
@@ -373,7 +410,7 @@ async def chat_stream(
                 piece = msg_chunk.content
                 if isinstance(piece, str) and piece:
                     yield {"type": "token", "content": piece}
-    except Exception as exc:  # noqa: BLE001 统一兜底
+    except Exception as exc:
         logger.exception("流式对话异常: %s", exc)
         yield {"type": "token", "content": "抱歉，AI 服务暂时不可用，请稍后重试。"}
         final_intent = "other"

@@ -224,8 +224,12 @@ async def build_dashboard(
             for it in items:
                 c = _resolve_city(it.get("location")) or DEFAULT_CITY
                 cities.setdefault(c, None)
-            results = await asyncio.gather(*(_safe_weather(c) for c in cities), return_exceptions=True)
-            for c, res in zip(cities.keys(), results):
+            results = await asyncio.gather(
+                *(_safe_weather(c) for c in cities), return_exceptions=True
+            )
+            # strict=True：gather 必然按输入顺序返回等长结果，
+            # 一旦不等说明并发逻辑出了问题，应当立刻暴露而不是静默错位
+            for c, res in zip(cities.keys(), results, strict=True):
                 cities[c] = None if isinstance(res, BaseException) else res
 
             for it in items:

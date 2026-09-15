@@ -8,7 +8,6 @@ from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import settings
 from app.core.security import decode_access_token
 from app.db.session import get_db
 from app.models.user import User
@@ -33,7 +32,9 @@ async def get_current_user(
         if sub is None:
             raise credentials_exc
     except jwt.PyJWTError:
-        raise credentials_exc
+        # from None：切断异常链，对外只暴露「凭证无效」，
+        # 不把 JWT 解析的内部报错细节泄漏给客户端
+        raise credentials_exc from None
 
     user = await db.scalar(select(User).where(User.id == int(sub)))
     if user is None or not user.is_active:

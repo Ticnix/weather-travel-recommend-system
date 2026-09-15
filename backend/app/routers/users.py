@@ -1,13 +1,13 @@
 """用户模块：注册、登录、当前用户、CRUD。"""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.deps import CurrentUser, get_current_user
+from app.core.deps import CurrentUser
 from app.core.response import success
 from app.core.security import create_access_token, hash_password, verify_password
 from app.db.session import get_db
@@ -20,9 +20,7 @@ router = APIRouter(prefix="/api/v1/users", tags=["用户"])
 @router.post("/register", response_model=dict, status_code=status.HTTP_201_CREATED)
 async def register(payload: UserCreate, db: Annotated[AsyncSession, Depends(get_db)]) -> dict:
     """用户注册（自动查重）。"""
-    exists = await db.scalar(
-        select(User.id).where((User.username == payload.username))
-    )
+    exists = await db.scalar(select(User.id).where(User.username == payload.username))
     if exists:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="用户名已存在")
 
@@ -46,7 +44,7 @@ async def login(payload: LoginRequest, db: Annotated[AsyncSession, Depends(get_d
     if user is None or not verify_password(payload.password, user.password_hash):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="用户名或密码错误")
 
-    user.last_login_at = datetime.now(timezone.utc)
+    user.last_login_at = datetime.now(UTC)
     await db.commit()
     await db.refresh(user)
 
@@ -87,7 +85,9 @@ async def list_users(
 
 
 @router.get("/{user_id}", response_model=dict)
-async def get_user(user_id: int, current: CurrentUser, db: Annotated[AsyncSession, Depends(get_db)]) -> dict:
+async def get_user(
+    user_id: int, current: CurrentUser, db: Annotated[AsyncSession, Depends(get_db)]
+) -> dict:
     user = await db.get(User, user_id)
     if user is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="用户不存在")

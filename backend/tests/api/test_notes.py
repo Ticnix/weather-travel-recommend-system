@@ -43,9 +43,7 @@ class TestCrud:
         await _create(client, auth_headers, title="甲", content="外滩夜景很好看")
         await _create(client, auth_headers, title="乙", content="无关内容")
 
-        r = await client.get(
-            "/api/v1/notes", headers=auth_headers, params={"keyword": "外滩"}
-        )
+        r = await client.get("/api/v1/notes", headers=auth_headers, params={"keyword": "外滩"})
         items = r.json()["data"]["items"]
         assert len(items) == 1
         assert items[0]["title"] == "甲"
@@ -226,9 +224,9 @@ class TestIsolation:
 
         other = {"username": "note_other", "password": "Pass@123456"}
         await client.post("/api/v1/users/register", json=other)
-        token = (
-            await client.post("/api/v1/users/login", json=other)
-        ).json()["data"]["access_token"]
+        token = (await client.post("/api/v1/users/login", json=other)).json()["data"][
+            "access_token"
+        ]
         other_headers = {"Authorization": f"Bearer {token}"}
 
         r = await client.get("/api/v1/notes", headers=other_headers)

@@ -13,10 +13,9 @@ from __future__ import annotations
 
 from langchain_core.tools import tool
 
-from skills.itinerary_reminder.scripts import reminder
-
 from app.services import user_knowledge_service
 from app.services.user_context import get_current_user_id
+from skills.itinerary_reminder.scripts import reminder
 
 
 @tool

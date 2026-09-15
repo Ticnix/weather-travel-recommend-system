@@ -74,7 +74,11 @@ async def sync_result(task_id: str, current: CurrentUser) -> dict:
 
     result = celery_app.AsyncResult(task_id)
     return success(
-        {"task_id": task_id, "status": result.status, "result": result.result if result.ready() else None}
+        {
+            "task_id": task_id,
+            "status": result.status,
+            "result": result.result if result.ready() else None,
+        }
     )
 
 

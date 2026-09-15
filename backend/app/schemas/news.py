@@ -1,7 +1,6 @@
 """资讯 / 公告相关 Schema。"""
 
 from datetime import datetime
-from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -9,11 +8,11 @@ from pydantic import BaseModel, ConfigDict, Field
 class NewsBase(BaseModel):
     title: str = Field(..., min_length=1, max_length=200)
     content: str = Field(..., min_length=1)
-    full_text: Optional[str] = None  # 原文正文（采集抓取，详情页直接阅读）
-    cover_url: Optional[str] = None
-    source_url: Optional[str] = None  # 原文链接（详情页内嵌展示）
+    full_text: str | None = None  # 原文正文（采集抓取，详情页直接阅读）
+    cover_url: str | None = None
+    source_url: str | None = None  # 原文链接（详情页内嵌展示）
     category: str = "news"  # news / notice / alert
-    author: Optional[str] = None
+    author: str | None = None
     is_top: bool = False
     is_published: bool = False
 
@@ -23,15 +22,15 @@ class NewsCreate(NewsBase):
 
 
 class NewsUpdate(BaseModel):
-    title: Optional[str] = None
-    content: Optional[str] = None
-    full_text: Optional[str] = None
-    cover_url: Optional[str] = None
-    source_url: Optional[str] = None
-    category: Optional[str] = None
-    author: Optional[str] = None
-    is_top: Optional[bool] = None
-    is_published: Optional[bool] = None
+    title: str | None = None
+    content: str | None = None
+    full_text: str | None = None
+    cover_url: str | None = None
+    source_url: str | None = None
+    category: str | None = None
+    author: str | None = None
+    is_top: bool | None = None
+    is_published: bool | None = None
 
 
 class NewsOut(NewsBase):
@@ -46,6 +45,6 @@ class NewsOut(NewsBase):
 class NewsListQuery(BaseModel):
     page: int = 1
     page_size: int = 20
-    category: Optional[str] = None
-    keyword: Optional[str] = None
+    category: str | None = None
+    keyword: str | None = None
     published_only: bool = False

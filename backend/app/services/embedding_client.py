@@ -73,7 +73,9 @@ class EmbeddingClient:
         if not texts:
             return []
         if not self.available:
-            logger.warning("ZHIPU_API_KEY 未配置或为占位符，使用本地伪向量兜底（维度 %s）", self.dim)
+            logger.warning(
+                "ZHIPU_API_KEY 未配置或为占位符，使用本地伪向量兜底（维度 %s）", self.dim
+            )
             return [_local_pseudo_vector(t, self.dim) for t in texts]
 
         url = f"{self.base_url}/embeddings"

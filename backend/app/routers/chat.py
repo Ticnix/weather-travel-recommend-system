@@ -35,7 +35,9 @@ async def chat(body: ChatRequest, current: OptionalUser = None) -> dict:
     # 持久化本轮对话（登录用户）
     if user_id is not None:
         await chat_history_service.add_message(user_id, conversation_id, "user", body.message)
-        await chat_history_service.add_message(user_id, conversation_id, "assistant", result["answer"])
+        await chat_history_service.add_message(
+            user_id, conversation_id, "assistant", result["answer"]
+        )
 
     data = ChatResponse(**result).model_dump()
     data["conversation_id"] = conversation_id
@@ -68,13 +70,20 @@ async def chat_stream(body: ChatRequest, current: OptionalUser = None):
         except Exception:  # noqa: BLE001
             yield {
                 "event": "message",
-                "data": json.dumps({"type": "token", "content": "抱歉，AI 服务暂时不可用，请稍后重试。"}, ensure_ascii=False),
+                "data": json.dumps(
+                    {"type": "token", "content": "抱歉，AI 服务暂时不可用，请稍后重试。"},
+                    ensure_ascii=False,
+                ),
             }
         finally:
             # 流式结束后持久化（登录用户）
             if user_id is not None and full_answer:
-                await chat_history_service.add_message(user_id, conversation_id, "user", body.message)
-                await chat_history_service.add_message(user_id, conversation_id, "assistant", full_answer)
+                await chat_history_service.add_message(
+                    user_id, conversation_id, "user", body.message
+                )
+                await chat_history_service.add_message(
+                    user_id, conversation_id, "assistant", full_answer
+                )
 
     return EventSourceResponse(event_generator())
 
@@ -100,12 +109,8 @@ async def get_conversation(
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> dict:
     """读取某个会话的全部消息（时间正序），供前端回放历史对话。"""
-    items = await chat_history_service.get_conversation_messages(
-        current.id, conversation_id, db=db
-    )
-    return success(
-        {"conversation_id": conversation_id, "items": items, "total": len(items)}
-    )
+    items = await chat_history_service.get_conversation_messages(current.id, conversation_id, db=db)
+    return success({"conversation_id": conversation_id, "items": items, "total": len(items)})
 
 
 @router.delete("/conversations/{conversation_id}", response_model=dict)
@@ -115,9 +120,7 @@ async def delete_conversation(
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> dict:
     """删除某个历史会话。"""
-    deleted = await chat_history_service.delete_conversation(
-        current.id, conversation_id, db=db
-    )
+    deleted = await chat_history_service.delete_conversation(current.id, conversation_id, db=db)
     if deleted == 0:
         raise HTTPException(status_code=404, detail="会话不存在")
     return success({"deleted": deleted}, message="会话已删除")

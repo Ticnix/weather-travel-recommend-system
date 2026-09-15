@@ -79,7 +79,9 @@ async def get_itinerary_by_date(
         stmt = select(Itinerary).where(Itinerary.user_id == user_id)
         if date_str:
             stmt = stmt.where(Itinerary.date == date_str)
-        rows = (await s.execute(stmt.order_by(Itinerary.date, Itinerary.start_time))).scalars().all()
+        rows = (
+            (await s.execute(stmt.order_by(Itinerary.date, Itinerary.start_time))).scalars().all()
+        )
         return [
             {
                 "id": r.id,
@@ -106,9 +108,8 @@ async def update_itinerary(
     db: AsyncSession | None = None,
 ) -> dict[str, Any] | None:
     """更新用户某条行程（只更新传入字段）；行程不存在或不属于该用户时返回 None。"""
-    if "date" in fields and fields["date"]:
-        if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", str(fields["date"])):
-            raise ValueError("日期格式应为 YYYY-MM-DD")
+    if fields.get("date") and not re.fullmatch(r"\d{4}-\d{2}-\d{2}", str(fields["date"])):
+        raise ValueError("日期格式应为 YYYY-MM-DD")
 
     owns_db = db is None
     session = db or AsyncSessionLocal()

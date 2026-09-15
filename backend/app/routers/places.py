@@ -7,8 +7,6 @@
 选中地点后前端会把坐标一并传给规划接口，从而跳过地名解析，避免报错。
 """
 
-from typing import Optional
-
 from fastapi import APIRouter, Query
 
 from app.core.response import success
@@ -20,7 +18,7 @@ router = APIRouter(prefix="/api/v1/places", tags=["地点服务"])
 @router.get("/suggest", response_model=dict)
 async def suggest_places(
     keyword: str = Query(..., min_length=1, description="关键词，如「猎德」"),
-    city: Optional[str] = Query(None, description="限定城市，默认广州"),
+    city: str | None = Query(None, description="限定城市，默认广州"),
     limit: int = Query(8, ge=1, le=20, description="返回条数上限"),
 ) -> dict:
     """地点输入联想：返回候选地点（名称 / 区域 / 经纬度）。

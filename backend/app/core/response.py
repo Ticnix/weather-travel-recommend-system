@@ -1,14 +1,16 @@
 """统一 API 响应体封装。"""
 
-from typing import Any, Generic, TypeVar
+from typing import Any
 
 from pydantic import BaseModel
 
-T = TypeVar("T")
 
+class ApiResponse[T](BaseModel):
+    """统一响应结构：{ code, message, data }。
 
-class ApiResponse(BaseModel, Generic[T]):
-    """统一响应结构：{ code, message, data }。"""
+    泛型写法用 PEP 695（`class ApiResponse[T]`）而非 `Generic[T]` 子类：
+    Python 3.12 起原生支持，少一次 TypeVar 声明；Pydantic 2.9+ 已支持该语法。
+    """
 
     code: int = 0
     message: str = "success"

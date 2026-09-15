@@ -34,16 +34,15 @@ os.environ["DB_URL"] = TEST_DB_URL
 # pytest-asyncio 每个用例新建事件循环，连接池缓存会跨 loop 失效
 os.environ["DB_USE_NULLPOOL"] = "1"
 
-import pytest  # noqa: E402
-import pytest_asyncio  # noqa: E402
-from httpx import ASGITransport, AsyncClient  # noqa: E402
-from sqlalchemy import text  # noqa: E402
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine  # noqa: E402
-from sqlalchemy.pool import NullPool  # noqa: E402
+import pytest_asyncio
+from httpx import ASGITransport, AsyncClient
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlalchemy.pool import NullPool
 
-from app import models  # noqa: E402,F401  # 注册所有模型到 Base.metadata
-from app.db.base import Base  # noqa: E402
-from app.main import app  # noqa: E402
+from app import models  # noqa: F401  # 注册所有模型到 Base.metadata
+from app.db.base import Base
+from app.main import app
 
 # ===== 测试专用引擎（连测试库）=====
 # ⚠️ 必须用 NullPool：pytest-asyncio 为每个用例创建独立事件循环，
@@ -61,9 +60,7 @@ ADMIN_CRED = {"username": "admin_t", "password": "Admin@123456"}
 async def _ensure_database() -> None:
     """确保测试库存在（不存在则创建）。"""
     admin_url = TEST_DB_URL.rsplit("/", 1)[0] + "/postgres"
-    admin_engine = create_async_engine(
-        admin_url, isolation_level="AUTOCOMMIT", poolclass=NullPool
-    )
+    admin_engine = create_async_engine(admin_url, isolation_level="AUTOCOMMIT", poolclass=NullPool)
     try:
         async with admin_engine.connect() as conn:
             exists = await conn.scalar(
@@ -87,7 +84,7 @@ async def _prepare_schema() -> None:
         await conn.run_sync(Base.metadata.create_all)
 
 
-def pytest_sessionstart(session) -> None:  # noqa: ARG001
+def pytest_sessionstart(session) -> None:
     """整个测试会话开始时：建库 + 建表（只做一次）。"""
     import asyncio
 

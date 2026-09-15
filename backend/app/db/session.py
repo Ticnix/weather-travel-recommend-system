@@ -1,5 +1,5 @@
-﻿import os
-from typing import AsyncGenerator
+import os
+from collections.abc import AsyncGenerator
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -43,7 +43,18 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
 async def init_db() -> None:
     """初始化数据库：启用扩展 -> 建表 -> 转换为 TimescaleDB 超表。"""
     from app.db.base import Base
-    from app.models import chat_message, clean_task, feedback, itinerary, knowledge, landmark, news, user, user_knowledge, weather  # noqa: F401
+    from app.models import (  # noqa: F401
+        chat_message,
+        clean_task,
+        feedback,
+        itinerary,
+        knowledge,
+        landmark,
+        news,
+        user,
+        user_knowledge,
+        weather,
+    )
 
     async with engine.begin() as conn:
         # 1. 启用三大扩展（幂等）
@@ -55,4 +66,6 @@ async def init_db() -> None:
         await conn.run_sync(Base.metadata.create_all)
 
         # 3. 将气象时序表转换为超表
-        await conn.execute(text("SELECT create_hypertable('weather_history', 'time', if_not_exists => TRUE)"))
+        await conn.execute(
+            text("SELECT create_hypertable('weather_history', 'time', if_not_exists => TRUE)")
+        )

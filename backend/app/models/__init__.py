@@ -1,4 +1,4 @@
-﻿from app.models.chat_message import ChatMessage
+from app.models.chat_message import ChatMessage
 from app.models.clean_task import CleanTask
 from app.models.feedback import Feedback
 from app.models.itinerary import Itinerary
@@ -11,15 +11,15 @@ from app.models.user_knowledge import UserKnowledge
 from app.models.weather import WeatherHistory
 
 __all__ = [
-    "User",
-    "News",
-    "Feedback",
-    "WeatherHistory",
-    "Landmark",
-    "KnowledgeChunk",
-    "UserKnowledge",
-    "Itinerary",
-    "CleanTask",
     "ChatMessage",
+    "CleanTask",
+    "Feedback",
+    "Itinerary",
+    "KnowledgeChunk",
+    "Landmark",
+    "News",
     "TripNote",
+    "User",
+    "UserKnowledge",
+    "WeatherHistory",
 ]

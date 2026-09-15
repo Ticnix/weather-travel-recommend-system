@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from sqlalchemy import delete, select, text
+from sqlalchemy import delete, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import AsyncSessionLocal
@@ -132,10 +132,7 @@ async def list_documents(user_id: int, db: AsyncSession | None = None) -> list[d
             """
         )
         result = await s.execute(stmt, {"user_id": user_id})
-        return [
-            {"title": r.title, "source": r.source, "chunks": r.chunks}
-            for r in result
-        ]
+        return [{"title": r.title, "source": r.source, "chunks": r.chunks} for r in result]
 
     if owns_db:
         async with session as s:

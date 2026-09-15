@@ -120,7 +120,13 @@ async def fetch_outfit_ideas(
     keyword = f"{city} {season}{scene_kw}穿搭"
 
     portals = build_portals(keyword)
-    empty = {"keyword": keyword, "season": season, "posts": [], "portals": portals, "engine": "none"}
+    empty = {
+        "keyword": keyword,
+        "season": season,
+        "posts": [],
+        "portals": portals,
+        "engine": "none",
+    }
 
     if not settings.TAVILY_API_KEY:
         return empty
@@ -131,9 +137,7 @@ async def fetch_outfit_ideas(
         f"小红书 {season} 穿搭 分享 笔记",
     ]
 
-    batches = await asyncio.gather(
-        *(_search_tavily(q, 6) for q in queries), return_exceptions=True
-    )
+    batches = await asyncio.gather(*(_search_tavily(q, 6) for q in queries), return_exceptions=True)
 
     posts: list[dict] = []
     seen_urls: set[str] = set()

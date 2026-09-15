@@ -5,7 +5,7 @@
 从而结合当天天气生成出行提醒与推荐。
 """
 
-from sqlalchemy import Date, ForeignKey, Integer, String, Text, Time
+from sqlalchemy import ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base, TimestampMixin
@@ -24,7 +24,9 @@ class Itinerary(Base, TimestampMixin):
     date: Mapped[str] = mapped_column(String(10), nullable=False, index=True)  # YYYY-MM-DD
     start_time: Mapped[str | None] = mapped_column(String(5), nullable=True)  # HH:MM
     location: Mapped[str | None] = mapped_column(String(128), nullable=True)  # 地点
-    activity: Mapped[str | None] = mapped_column(String(64), nullable=True)  # 活动类型（爬山/夜游/逛街等）
+    activity: Mapped[str | None] = mapped_column(
+        String(64), nullable=True
+    )  # 活动类型（爬山/夜游/逛街等）
     note: Mapped[str | None] = mapped_column(Text, nullable=True)  # 备注
 
     def __repr__(self) -> str:

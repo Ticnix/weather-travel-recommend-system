@@ -1,7 +1,6 @@
 """清洗任务服务：DB 记录管理 + 触发 Celery 异步清洗。"""
 
 from pathlib import Path
-from typing import Optional
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -25,15 +24,21 @@ def ensure_dirs() -> None:
 
 
 async def create_task_record(
-    task_id: str, filename: str, stored_path: str, triggered_by: str | None = None,
+    task_id: str,
+    filename: str,
+    stored_path: str,
+    triggered_by: str | None = None,
     use_celery_engine: bool = False,
 ) -> CleanTask:
     """创建清洗任务记录（status=pending）。"""
     factory = _make_session() if use_celery_engine else AsyncSessionLocal
     async with factory() as db:
         task = CleanTask(
-            task_id=task_id, filename=filename, stored_path=stored_path,
-            status="pending", triggered_by=triggered_by,
+            task_id=task_id,
+            filename=filename,
+            stored_path=stored_path,
+            status="pending",
+            triggered_by=triggered_by,
         )
         db.add(task)
         await db.commit()
@@ -65,7 +70,7 @@ async def mark_task_failed(task_id: str, error: str, use_celery_engine: bool = F
         await db.commit()
 
 
-async def get_task(task_id: str) -> Optional[CleanTask]:
+async def get_task(task_id: str) -> CleanTask | None:
     async with AsyncSessionLocal() as db:
         return await db.scalar(select(CleanTask).where(CleanTask.task_id == task_id))
 

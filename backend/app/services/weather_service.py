@@ -51,9 +51,7 @@ async def _open_meteo_fetch(city: str | None) -> WeatherBundle:
         if info:
             lat, lon = info.lat, info.lon
             loc_code = info.name
-    return await _open_meteo.fetch(
-        latitude=lat, longitude=lon, location_code=loc_code
-    )
+    return await _open_meteo.fetch(latitude=lat, longitude=lon, location_code=loc_code)
 
 
 def weather_to_text(bundle: WeatherBundle) -> str:

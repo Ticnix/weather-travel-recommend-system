@@ -2,14 +2,13 @@
 
 import asyncio
 import logging
-from typing import Optional
 
 from app.celery_app import celery_app
 from app.services.rag_service import build_index
 
 logger = logging.getLogger(__name__)
 
-_loop: Optional[asyncio.AbstractEventLoop] = None
+_loop: asyncio.AbstractEventLoop | None = None
 
 
 def _get_loop() -> asyncio.AbstractEventLoop:
@@ -30,6 +29,6 @@ def build_index_task() -> dict:
         stats = _run(build_index(use_celery_engine=True))
         logger.info("知识库索引构建成功：%s", stats)
         return {"ok": True, **stats}
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         logger.exception("知识库索引构建失败")
         return {"ok": False, "error": str(e)}

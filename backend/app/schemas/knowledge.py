@@ -1,7 +1,5 @@
 """RAG 知识库模块 Schema。"""
 
-from typing import Optional
-
 from pydantic import BaseModel
 
 
@@ -23,4 +21,4 @@ class SearchHit(BaseModel):
 
 class SearchRequest(BaseModel):
     query: str
-    top_k: Optional[int] = None
+    top_k: int | None = None

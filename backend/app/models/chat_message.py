@@ -3,7 +3,8 @@
 每条记录存一轮「用户提问 + AI 回答」，按 user_id 隔离（多租户）。
 会话用 conversation_id 分组，支持一个用户多段对话。
 """
-from sqlalchemy import ForeignKey, Integer, String, Text
+
+from sqlalchemy import ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base, TimestampMixin

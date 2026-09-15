@@ -4,7 +4,7 @@
 管理员可看全部并流转状态（Day 3 先做基础鉴权，细粒度权限后续完善）。
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -52,9 +52,7 @@ async def list_feedback(
     if status_filter:
         conditions.append(Feedback.status == status_filter)
     # count 基于 feedback 行
-    total = await db.scalar(
-        select(func.count()).select_from(Feedback).where(*conditions)
-    ) or 0
+    total = await db.scalar(select(func.count()).select_from(Feedback).where(*conditions)) or 0
     # ⚠️ 筛选条件必须同时作用于 rows：此前只用在 count 上，
     # 导致普通用户能查到他人反馈（隐私问题），且 total 与实际条数不符
     if conditions:
@@ -84,7 +82,10 @@ async def get_feedback(
 
 @router.put("/{fb_id}", response_model=dict)
 async def update_feedback(
-    fb_id: int, payload: FeedbackUpdate, current: CurrentUser, db: Annotated[AsyncSession, Depends(get_db)]
+    fb_id: int,
+    payload: FeedbackUpdate,
+    current: CurrentUser,
+    db: Annotated[AsyncSession, Depends(get_db)],
 ) -> dict:
     fb = await db.get(Feedback, fb_id)
     if fb is None:
@@ -95,8 +96,8 @@ async def update_feedback(
         raise HTTPException(status_code=403, detail="无权回复或修改状态")
     for field, value in data.items():
         setattr(fb, field, value)
-    if "reply" in data and data["reply"]:
-        fb.reply_at = datetime.now(timezone.utc)
+    if data.get("reply"):
+        fb.reply_at = datetime.now(UTC)
     await db.commit()
     await db.refresh(fb)
     return success(FeedbackOut.model_validate(fb).model_dump(), message="更新成功")

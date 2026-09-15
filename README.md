@@ -1,8 +1,14 @@
 # 基于气象大数据的出行推荐系统
 
+[![CI](https://github.com/Ticnix/weather-travel-recommend-system/actions/workflows/ci.yml/badge.svg)](https://github.com/Ticnix/weather-travel-recommend-system/actions/workflows/ci.yml)
+
 面向**广州市**的气象大数据 + AI 智能体出行推荐平台。以「多模 PostgreSQL」为数据底座，
 用 **LangGraph + MCP + RAG + Skill** 构建能查天气、做攻略、规划路线、推荐穿搭的 AI 助手，
 并配套完整的 C 端用户站与 B 端管理后台。
+
+> **自动化质量保障**：442 个测试用例（后端 pytest 379 + 前端 Vitest 41 + E2E Playwright 22），
+> 每次提交自动跑 lint → test → build 三关，任一失败即拦截。
+> 想了解"测试到底在干嘛"→ 见 [测试入门指南.md](./测试入门指南.md)。
 
 ---
 

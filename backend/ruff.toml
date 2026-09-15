@@ -1,0 +1,70 @@
+# Ruff 配置：Python 静态检查 + 导入排序
+#
+# 定位说明：lint 只挑「明确是坏味道、或能自动修」的规则。
+# 个人项目最容易犯的错是把规则开到最满，结果一次报出几百条无关痛痒的问题，
+# 最后所有人都选择无视它——那还不如不配。
+#
+# 用法：
+#   ruff check .          # 检查
+#   ruff check . --fix    # 检查并自动修复（导入排序、无用变量等）
+#   ruff format .         # 按 black 风格格式化
+
+line-length = 100
+target-version = "py312"
+
+exclude = [
+    ".venv",
+    "__pycache__",
+    "htmlcov",
+    # 迁移脚本由 alembic autogenerate 产出：
+    # 格式化会重排它生成的代码，导致 diff 噪音大、review 困难
+    "alembic/versions",
+]
+
+[lint]
+select = [
+    "E",    # pycodestyle：基础语法规范
+    "F",    # pyflakes：未使用的导入/变量、未定义的名字（真 bug 高发区）
+    "I",    # isort：导入顺序统一
+    "UP",   # pyupgrade：用更现代的内置写法（如 dict | None 替代 Optional）
+    "B",    # flake8-bugbear：容易写出 bug 的写法（可变默认参数等）
+    "C4",   # 推导式/生成器优化建议
+    "SIM",  # 可简化的写法
+    "RUF",  # ruff 自己的规则集
+    # 这条本来没打算开，但项目里已经写了对应的 `# noqa` 标注
+    # （例如调用外部 API 时 `except Exception  # noqa: BLE001`）。
+    # 不启用它会让那些 noqa 被判定为「无用」而被自动删掉——
+    # 删掉就丢失了「这里是有意捕获全部异常」这个重要信息，所以必须启用。
+    "BLE",  # 捕获裸 Exception：项目在外部依赖容错处大量使用，属有意为之
+]
+
+# 说明：没有启用 ARG（未使用参数）。试过之后发现它在**测试文件**（fixture
+# 注入常常只为副作用）和 **FastAPI 路由函数**（参数由框架按名字注入）里
+# 会报出 70+ 条误报，属于"关掉比开着更有价值"的规则。
+
+ignore = [
+    # 行长度交给 ruff format 处理，不在 lint 阶段报错——
+    # 否则每有一处超长就红一片，噪音太大
+    "E501",
+    # FastAPI 的 Depends()/Query() 作为默认值是官方写法，bugbear 会误报
+    "B008",
+    # 不强制把 if-else 改写成三元表达式，可读性优先
+    "SIM108",
+    # 允许中文标点出现在注释/文档字符串里
+    "RUF001",
+    "RUF002",
+    "RUF003",
+]
+
+[lint.per-file-ignores]
+# conftest.py 必须在 import app 之前设置环境变量（settings 是模块级单例），
+# 因此 import 不能全部置顶，E402 在这里是必要的妥协
+"tests/conftest.py" = ["E402"]
+"app/main.py" = ["E402"]
+# 测试里大量使用 pytest 的 fixture 参数、深层嵌套的断言，
+# 部分规则在测试代码上收益极低
+"tests/**" = ["B011"]
+
+[lint.isort]
+# 与常见项目习惯保持一致：把本项目 app / skills 视作第一方包
+known-first-party = ["app", "skills", "tests"]

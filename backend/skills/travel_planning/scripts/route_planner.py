@@ -31,7 +31,9 @@ def cost_score(cost: float, max_cost: float) -> float:
     return max(0.0, 1.0 - cost / max_cost)
 
 
-def weather_score(weather_desc: str, temp_min: float | None, temp_max: float | None, precip: float | None) -> float:
+def weather_score(
+    weather_desc: str, temp_min: float | None, temp_max: float | None, precip: float | None
+) -> float:
     score = 1.0
     if precip is not None:
         score -= min(0.5, precip / 20.0)
@@ -63,11 +65,15 @@ async def run(origin: str, destination: str, city: str | None = None) -> str:
     temp_max = plan["weather"].get("temp_max")
     precip = plan["weather"].get("precip")
 
-    lines = [f"从「{plan['origin']}」到「{plan['destination']}」的出行方案（共 {len(scored)} 套，按综合评分排序）："]
+    lines = [
+        f"从「{plan['origin']}」到「{plan['destination']}」的出行方案（共 {len(scored)} 套，按综合评分排序）："
+    ]
     if weather_desc:
-        lines.append(f"当前天气参考：{weather_desc}"
-                     + (f"，{temp_min}~{temp_max}°C" if temp_min is not None else "")
-                     + (f"，降水 {precip}mm" if precip else ""))
+        lines.append(
+            f"当前天气参考：{weather_desc}"
+            + (f"，{temp_min}~{temp_max}°C" if temp_min is not None else "")
+            + (f"，降水 {precip}mm" if precip else "")
+        )
 
     for i, r in enumerate(scored, 1):
         lines.append(
@@ -79,7 +85,9 @@ async def run(origin: str, destination: str, city: str | None = None) -> str:
 
     if weather_desc:
         if precip and precip > 0:
-            lines.append(f"\n⚠️ 天气提示：当天有降水（{precip}mm），建议优先选择耗时短、换乘少的方案，备好雨具。")
+            lines.append(
+                f"\n⚠️ 天气提示：当天有降水（{precip}mm），建议优先选择耗时短、换乘少的方案，备好雨具。"
+            )
         if any(bad in weather_desc for bad in ("雨", "雷", "雪")):
             lines.append("   雨天路滑，驾车请减速，步行/骑行注意安全。")
 
@@ -138,13 +146,15 @@ async def plan_structured(
         cs = cost_score(r["cost"], max_cost)
         ws = weather_score(weather_desc, temp_min, temp_max, precip)
         total = WEIGHT_TIME * ts + WEIGHT_COST * cs + WEIGHT_WEATHER * ws
-        scored.append({
-            **r,
-            "time_score": round(ts, 2),
-            "cost_score": round(cs, 2),
-            "weather_score": round(ws, 2),
-            "total_score": round(total, 3),
-        })
+        scored.append(
+            {
+                **r,
+                "time_score": round(ts, 2),
+                "cost_score": round(cs, 2),
+                "weather_score": round(ws, 2),
+                "total_score": round(total, 3),
+            }
+        )
 
     scored.sort(key=lambda r: r["total_score"], reverse=True)
 

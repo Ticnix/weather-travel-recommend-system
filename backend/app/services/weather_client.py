@@ -9,7 +9,7 @@
 """
 
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import httpx
@@ -18,16 +18,34 @@ from app.core.config import settings
 
 # WMO 天气编码 → 中文描述（Open-Meteo 采用 WMO code）
 WMO_CODE_DESC: dict[int, str] = {
-    0: "晴", 1: "多云", 2: "阴", 3: "阴",
-    45: "雾", 48: "雾凇",
-    51: "小雨", 53: "小雨", 55: "中雨",
-    56: "冻雨", 57: "冻雨",
-    61: "小雨", 63: "中雨", 65: "大雨",
-    66: "冻雨", 67: "冻雨",
-    71: "小雪", 73: "中雪", 75: "大雪", 77: "霰",
-    80: "阵雨", 81: "阵雨", 82: "强阵雨",
-    85: "阵雪", 86: "阵雪",
-    95: "雷阵雨", 96: "雷阵雨伴冰雹", 99: "强雷阵雨伴冰雹",
+    0: "晴",
+    1: "多云",
+    2: "阴",
+    3: "阴",
+    45: "雾",
+    48: "雾凇",
+    51: "小雨",
+    53: "小雨",
+    55: "中雨",
+    56: "冻雨",
+    57: "冻雨",
+    61: "小雨",
+    63: "中雨",
+    65: "大雨",
+    66: "冻雨",
+    67: "冻雨",
+    71: "小雪",
+    73: "中雪",
+    75: "大雪",
+    77: "霰",
+    80: "阵雨",
+    81: "阵雨",
+    82: "强阵雨",
+    85: "阵雪",
+    86: "阵雪",
+    95: "雷阵雨",
+    96: "雷阵雨伴冰雹",
+    99: "强雷阵雨伴冰雹",
 }
 
 # 风向角度 → 八方位
@@ -195,7 +213,7 @@ class WeatherClient:
                 WeatherAlert(
                     level="warn",
                     type="wind",
-                    title=f"大风提示",
+                    title="大风提示",
                     detail=f"当前风速 {current.wind_speed:.1f} km/h，注意出行安全",
                 )
             )
@@ -224,7 +242,7 @@ def _idx(arr: list[Any] | None, i: int) -> Any:
 def _parse_dt(s: str | None) -> datetime:
     """Open-Meteo current.time 形如 '2026-08-23T18:15'，无时区后缀，按 Asia/Shanghai 解析后转 UTC。"""
     if not s:
-        return datetime.now(timezone.utc)
+        return datetime.now(UTC)
     # 用 fromisoformat 解析 naive，再附加时区
     try:
         from datetime import datetime as _dt
@@ -232,9 +250,9 @@ def _parse_dt(s: str | None) -> datetime:
         naive = _dt.fromisoformat(s)
         from zoneinfo import ZoneInfo
 
-        return naive.replace(tzinfo=ZoneInfo("Asia/Shanghai")).astimezone(timezone.utc)
-    except Exception:
-        return datetime.now(timezone.utc)
+        return naive.replace(tzinfo=ZoneInfo("Asia/Shanghai")).astimezone(UTC)
+    except Exception:  # noqa: BLE001 时间解析失败兜底为当前时间，避免接口整体失败
+        return datetime.now(UTC)
 
 
 # 默认单例

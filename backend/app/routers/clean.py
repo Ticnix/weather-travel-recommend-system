@@ -4,7 +4,7 @@ import uuid
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -12,7 +12,6 @@ from app.core.config import settings
 from app.core.deps import CurrentUser
 from app.core.response import success
 from app.db.session import get_db
-from app.models.clean_task import CleanTask
 from app.schemas.clean import CleanTaskDetail, CleanTaskOut
 from app.services.clean_service import (
     create_task_record,
@@ -72,13 +71,15 @@ async def list_clean_tasks(
 ) -> dict:
     """清洗任务列表（鉴权）。"""
     tasks = await list_tasks(limit)
-    return success({"items": [CleanTaskOut.model_validate(t).model_dump() for t in tasks],
-                    "total": len(tasks)})
+    return success(
+        {"items": [CleanTaskOut.model_validate(t).model_dump() for t in tasks], "total": len(tasks)}
+    )
 
 
 @router.get("/{task_id}", response_model=dict)
-async def get_clean_task(task_id: str, current: CurrentUser,
-                         db: Annotated[AsyncSession, Depends(get_db)]) -> dict:
+async def get_clean_task(
+    task_id: str, current: CurrentUser, db: Annotated[AsyncSession, Depends(get_db)]
+) -> dict:
     """清洗任务详情（含日志，鉴权）。"""
     task = await get_task(task_id)
     if task is None:
@@ -87,8 +88,9 @@ async def get_clean_task(task_id: str, current: CurrentUser,
 
 
 @router.get("/{task_id}/download", response_model=dict)
-async def download_cleaned(task_id: str, current: CurrentUser,
-                           db: Annotated[AsyncSession, Depends(get_db)]):
+async def download_cleaned(
+    task_id: str, current: CurrentUser, db: Annotated[AsyncSession, Depends(get_db)]
+):
     """下载清洗后的 CSV（鉴权）。"""
     task = await get_task(task_id)
     if task is None:
@@ -98,5 +100,4 @@ async def download_cleaned(task_id: str, current: CurrentUser,
     cleaned_path = Path(settings.CLEANED_DIR) / f"cleaned_{task_id}_{task.filename}"
     if not cleaned_path.exists():
         raise HTTPException(status_code=404, detail="清洗结果文件不存在")
-    return FileResponse(path=str(cleaned_path), filename=cleaned_path.name,
-                        media_type="text/csv")
+    return FileResponse(path=str(cleaned_path), filename=cleaned_path.name, media_type="text/csv")

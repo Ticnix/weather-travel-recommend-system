@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import httpx
@@ -30,39 +30,104 @@ logger = logging.getLogger(__name__)
 
 # 和风天气现象 → 简中描述（官方图标代码，100 是晴，101-104 多云等）
 QW_ICON_DESC: dict[int, str] = {
-    100: "晴", 101: "多云", 102: "少云", 103: "晴间多云", 104: "阴",
-    150: "晴", 151: "多云", 152: "少云", 153: "晴间多云",
-    300: "阵雨", 301: "强阵雨", 302: "雷阵雨", 305: "小雨", 306: "中雨", 307: "大雨",
-    310: "暴雨", 311: "大暴雨", 312: "特大暴雨",
-    315: "冻雨", 317: "冻雨", 318: "冻雨",
-    350: "阵雨夹雪", 351: "阵雨夹雪", 352: "阵雨夹雪",
-    400: "小雪", 401: "中雪", 402: "大雪", 403: "暴雪",
-    404: "雨夹雪", 405: "雨夹雪", 406: "雨夹雪",
-    407: "阵雪", 408: "阵雪", 409: "阵雪",
-    410: "中雪", 456: "中雪", 457: "中雪",
-    500: "雾", 501: "雾", 502: "霾", 503: "扬沙", 504: "浮尘", 507: "沙尘暴", 508: "强沙尘暴",
-    509: "浓雾", 510: "浓雾", 511: "浓雾", 512: "浓雾", 513: "浓雾", 514: "浓雾", 515: "浓雾",
-    900: "热", 901: "冷", 999: "未知",
+    100: "晴",
+    101: "多云",
+    102: "少云",
+    103: "晴间多云",
+    104: "阴",
+    150: "晴",
+    151: "多云",
+    152: "少云",
+    153: "晴间多云",
+    300: "阵雨",
+    301: "强阵雨",
+    302: "雷阵雨",
+    305: "小雨",
+    306: "中雨",
+    307: "大雨",
+    310: "暴雨",
+    311: "大暴雨",
+    312: "特大暴雨",
+    315: "冻雨",
+    317: "冻雨",
+    318: "冻雨",
+    350: "阵雨夹雪",
+    351: "阵雨夹雪",
+    352: "阵雨夹雪",
+    400: "小雪",
+    401: "中雪",
+    402: "大雪",
+    403: "暴雪",
+    404: "雨夹雪",
+    405: "雨夹雪",
+    406: "雨夹雪",
+    407: "阵雪",
+    408: "阵雪",
+    409: "阵雪",
+    410: "中雪",
+    456: "中雪",
+    457: "中雪",
+    500: "雾",
+    501: "雾",
+    502: "霾",
+    503: "扬沙",
+    504: "浮尘",
+    507: "沙尘暴",
+    508: "强沙尘暴",
+    509: "浓雾",
+    510: "浓雾",
+    511: "浓雾",
+    512: "浓雾",
+    513: "浓雾",
+    514: "浓雾",
+    515: "浓雾",
+    900: "热",
+    901: "冷",
+    999: "未知",
 }
 
 # 和风预警等级 → 中文（蓝色/黄色/橙色/红色）
 QW_ALERT_LEVEL: dict[str, str] = {
-    "Blue": "蓝色", "Yellow": "黄色", "Orange": "橙色", "Red": "红色", "White": "白色",
+    "Blue": "蓝色",
+    "Yellow": "黄色",
+    "Orange": "橙色",
+    "Red": "红色",
+    "White": "白色",
 }
 
 # 和风预警类型 → 中文
 QW_ALERT_TYPE: dict[str, str] = {
-    "Typhoon": "台风", "Rainstorm": "暴雨", "HeavyRain": "强降雨",
-    "Thunder": "雷电", "HighTemp": "高温", "LowTemp": "低温",
-    "Wind": "大风", "Fog": "大雾", "Haze": "霾", "Snow": "暴雪",
-    "Frost": "霜冻", "Sandstorm": "沙尘暴", "ColdWave": "寒潮", "HeatWave": "热浪",
+    "Typhoon": "台风",
+    "Rainstorm": "暴雨",
+    "HeavyRain": "强降雨",
+    "Thunder": "雷电",
+    "HighTemp": "高温",
+    "LowTemp": "低温",
+    "Wind": "大风",
+    "Fog": "大雾",
+    "Haze": "霾",
+    "Snow": "暴雪",
+    "Frost": "霜冻",
+    "Sandstorm": "沙尘暴",
+    "ColdWave": "寒潮",
+    "HeatWave": "热浪",
 }
 
 # 风力等级（和风用 Beaufort 数字 0~12）
 WIND_LEVEL: dict[int, str] = {
-    0: "无风", 1: "软风", 2: "轻风", 3: "微风", 4: "和风", 5: "清劲风",
-    6: "强风", 7: "疾风", 8: "大风", 9: "烈风", 10: "狂风",
-    11: "暴风", 12: "台风",
+    0: "无风",
+    1: "软风",
+    2: "轻风",
+    3: "微风",
+    4: "和风",
+    5: "清劲风",
+    6: "强风",
+    7: "疾风",
+    8: "大风",
+    9: "烈风",
+    10: "狂风",
+    11: "暴风",
+    12: "台风",
 }
 
 
@@ -118,12 +183,12 @@ class WeatherBundle:
 def _parse_qweather_dt(s: str | None) -> datetime:
     """和风时间格式 '2026-08-25T16:00+08:00' -> aware datetime。"""
     if not s:
-        return datetime.now(timezone.utc)
+        return datetime.now(UTC)
     try:
         # Python 3.11+ 直接支持时区后缀
         return datetime.fromisoformat(s)
-    except Exception:
-        return datetime.now(timezone.utc)
+    except Exception:  # noqa: BLE001 解析失败必须兜底，不能让天气接口整体挂掉
+        return datetime.now(UTC)
 
 
 class QWeatherClient:
@@ -176,7 +241,7 @@ class QWeatherClient:
         # 预警（失败不影响主流程）
         alerts: list[WeatherAlert] = []
         try:
-            warn_data = (await self._get("/warning/now", loc))
+            warn_data = await self._get("/warning/now", loc)
             for w in warn_data.get("warning", []):
                 alerts.append(
                     WeatherAlert(
@@ -250,7 +315,7 @@ def _wind_beaufort(scale_text: str) -> int:
     try:
         parts = scale_text.split("-")
         return max(int(p) for p in parts)
-    except Exception:
+    except Exception:  # noqa: BLE001 和风格式不稳定（如 'unknown'），解析失败返回 -1
         return -1
 
 

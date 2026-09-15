@@ -4,8 +4,6 @@
 **A 用户绝不能看到/改到 B 用户的行程**。
 """
 
-from tests.conftest import USER_CRED
-
 
 async def _create(client, headers, **overrides) -> dict:
     payload = {
@@ -44,9 +42,7 @@ class TestCreate:
         assert r.status_code == 422
 
     async def test_未登录不能创建(self, client):
-        r = await client.post(
-            "/api/v1/itinerary", json={"title": "x", "date": "2026-09-20"}
-        )
+        r = await client.post("/api/v1/itinerary", json={"title": "x", "date": "2026-09-20"})
         assert r.status_code == 401
 
 
@@ -99,15 +95,11 @@ class TestUpdate:
 
     async def test_空请求体报错(self, client, auth_headers):
         item = await _create(client, auth_headers)
-        r = await client.put(
-            f"/api/v1/itinerary/{item['id']}", headers=auth_headers, json={}
-        )
+        r = await client.put(f"/api/v1/itinerary/{item['id']}", headers=auth_headers, json={})
         assert r.status_code == 400
 
     async def test_不存在返回404(self, client, auth_headers):
-        r = await client.put(
-            "/api/v1/itinerary/999999", headers=auth_headers, json={"title": "x"}
-        )
+        r = await client.put("/api/v1/itinerary/999999", headers=auth_headers, json={"title": "x"})
         assert r.status_code == 404
 
     async def test_改日期格式非法报错(self, client, auth_headers):
@@ -145,9 +137,9 @@ class TestIsolation:
         # 注册另一个用户
         other = {"username": "other_user", "password": "Pass@123456"}
         await client.post("/api/v1/users/register", json=other)
-        token = (
-            await client.post("/api/v1/users/login", json=other)
-        ).json()["data"]["access_token"]
+        token = (await client.post("/api/v1/users/login", json=other)).json()["data"][
+            "access_token"
+        ]
         other_headers = {"Authorization": f"Bearer {token}"}
 
         # 他看不到我的行程
@@ -155,9 +147,7 @@ class TestIsolation:
         assert r.json()["data"]["items"] == []
 
         # 他也删不掉我的行程
-        r = await client.delete(
-            f"/api/v1/itinerary/{item['id']}", headers=other_headers
-        )
+        r = await client.delete(f"/api/v1/itinerary/{item['id']}", headers=other_headers)
         assert r.status_code == 404  # 不暴露"存在但不属于你"
 
         # 我的行程仍然完好
@@ -169,9 +159,9 @@ class TestIsolation:
 
         other = {"username": "other_user2", "password": "Pass@123456"}
         await client.post("/api/v1/users/register", json=other)
-        token = (
-            await client.post("/api/v1/users/login", json=other)
-        ).json()["data"]["access_token"]
+        token = (await client.post("/api/v1/users/login", json=other)).json()["data"][
+            "access_token"
+        ]
 
         r = await client.put(
             f"/api/v1/itinerary/{item['id']}",

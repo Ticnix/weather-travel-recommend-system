@@ -52,9 +52,7 @@ class TestTavily:
 
     async def test_空结果返回空列表(self, monkeypatch, respx_mock):
         monkeypatch.setattr(ws.settings, "TAVILY_API_KEY", "fake-key")
-        respx_mock.post(TAVILY_URL).mock(
-            return_value=httpx.Response(200, json={"results": []})
-        )
+        respx_mock.post(TAVILY_URL).mock(return_value=httpx.Response(200, json={"results": []}))
         assert await ws._search_tavily("q", 5) == []
 
 
@@ -78,9 +76,7 @@ class TestDuckDuckGo:
         assert results[0]["url"] == "https://example.com/gz"
 
     async def test_无结果返回空列表(self, respx_mock):
-        respx_mock.get(DDG_URL).mock(
-            return_value=httpx.Response(200, json={"RelatedTopics": []})
-        )
+        respx_mock.get(DDG_URL).mock(return_value=httpx.Response(200, json={"RelatedTopics": []}))
         assert await ws._search_ddg("q", 5) == []
 
 
@@ -110,7 +106,11 @@ class TestSearchEntry:
         respx_mock.get(DDG_URL).mock(
             return_value=httpx.Response(
                 200,
-                json={"Heading": "兜底结果", "AbstractText": "来自 DDG", "AbstractURL": "https://ddg.com"},
+                json={
+                    "Heading": "兜底结果",
+                    "AbstractText": "来自 DDG",
+                    "AbstractURL": "https://ddg.com",
+                },
             )
         )
         text = await ws.search("广州天气")

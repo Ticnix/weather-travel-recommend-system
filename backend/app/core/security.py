@@ -7,7 +7,7 @@
 import hashlib
 import hmac
 import secrets
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import jwt
@@ -41,7 +41,7 @@ def verify_password(password: str, stored: str) -> bool:
 
 def create_access_token(subject: str | int, extra: dict[str, Any] | None = None) -> str:
     """生成 JWT。payload 含 sub 与 exp。"""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     payload: dict[str, Any] = {
         "sub": str(subject),
         "iat": now,

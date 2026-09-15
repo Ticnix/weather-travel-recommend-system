@@ -3,7 +3,7 @@
 记录每次 CSV 清洗任务的元信息与执行日志，便于管理端查询任务状态与清洗过程。
 """
 
-from sqlalchemy import DateTime, Float, Integer, String, Text, func
+from sqlalchemy import Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base, TimestampMixin
@@ -15,10 +15,14 @@ class CleanTask(Base, TimestampMixin):
     __tablename__ = "clean_tasks"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    task_id: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)  # Celery task id
+    task_id: Mapped[str] = mapped_column(
+        String(64), unique=True, index=True, nullable=False
+    )  # Celery task id
     filename: Mapped[str] = mapped_column(String(255), nullable=False)  # 原始文件名
     stored_path: Mapped[str] = mapped_column(String(512), nullable=False)  # 服务器存储路径
-    status: Mapped[str] = mapped_column(String(16), default="pending", nullable=False)  # pending/running/success/failed
+    status: Mapped[str] = mapped_column(
+        String(16), default="pending", nullable=False
+    )  # pending/running/success/failed
     total_rows: Mapped[int | None] = mapped_column(Integer, nullable=True)  # 原始行数
     cleaned_rows: Mapped[int | None] = mapped_column(Integer, nullable=True)  # 清洗后行数
     duplicated_removed: Mapped[int | None] = mapped_column(Integer, nullable=True)  # 去重删除数

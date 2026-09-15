@@ -1,7 +1,6 @@
 """清洗模块 Schema。"""
 
 from datetime import datetime
-from typing import Optional
 
 from pydantic import BaseModel, ConfigDict
 
@@ -13,21 +12,21 @@ class CleanTaskOut(BaseModel):
     task_id: str
     filename: str
     status: str
-    total_rows: Optional[int] = None
-    cleaned_rows: Optional[int] = None
-    duplicated_removed: Optional[int] = None
-    filled_missing: Optional[int] = None
-    filtered_outliers: Optional[int] = None
-    unit_standardized: Optional[int] = None
-    error: Optional[str] = None
-    triggered_by: Optional[str] = None
+    total_rows: int | None = None
+    cleaned_rows: int | None = None
+    duplicated_removed: int | None = None
+    filled_missing: int | None = None
+    filtered_outliers: int | None = None
+    unit_standardized: int | None = None
+    error: str | None = None
+    triggered_by: str | None = None
     created_at: datetime
     updated_at: datetime
 
 
 class CleanTaskDetail(CleanTaskOut):
-    log: Optional[str] = None
-    stored_path: Optional[str] = None
+    log: str | None = None
+    stored_path: str | None = None
 
 
 class UploadResult(BaseModel):

@@ -12,16 +12,14 @@
 from __future__ import annotations
 
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from skills.outfit_recommend.scripts import outfit_engine
-from skills.travel_planning.scripts import route_planner
 
 from app.db.session import AsyncSessionLocal
 from app.models.news import News
 from app.services import rag_service, web_search_service
 from app.services.city_dict import all_supported_cities, lookup_city
 from app.services.weather_service import fetch_weather, weather_to_text
+from skills.outfit_recommend.scripts import outfit_engine
+from skills.travel_planning.scripts import route_planner
 
 # 支持的城市列表（供工具描述/参数提示使用）
 _SUPPORTED_CITIES = "、".join(all_supported_cities())
@@ -82,14 +80,20 @@ async def search_news(keyword: str, category: str | None = None, limit: int = 5)
             .limit(limit)
         )
         if category and category != "news":
-            stmt = select(News).where(
-                News.is_published.is_(True), News.category == category
-            ).order_by(News.is_top.desc(), News.id.desc()).limit(limit)
+            stmt = (
+                select(News)
+                .where(News.is_published.is_(True), News.category == category)
+                .order_by(News.is_top.desc(), News.id.desc())
+                .limit(limit)
+            )
         if keyword and keyword.strip():
             kw = f"%{keyword.strip()}%"
-            stmt = select(News).where(
-                News.is_published.is_(True), News.title.ilike(kw) | News.content.ilike(kw)
-            ).order_by(News.is_top.desc(), News.id.desc()).limit(limit)
+            stmt = (
+                select(News)
+                .where(News.is_published.is_(True), News.title.ilike(kw) | News.content.ilike(kw))
+                .order_by(News.is_top.desc(), News.id.desc())
+                .limit(limit)
+            )
 
         rows = (await db.execute(stmt)).scalars().all()
 

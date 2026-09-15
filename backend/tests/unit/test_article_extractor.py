@@ -96,16 +96,12 @@ class TestFetchArticleText:
             "<p>粤公网安备44010602000929号 网站标识码：4401000004 版权所有</p></body></html>"
         )
         respx_mock.get("https://example.com/junk").mock(
-            return_value=httpx.Response(
-                200, headers={"content-type": "text/html"}, text=junk_html
-            )
+            return_value=httpx.Response(200, headers={"content-type": "text/html"}, text=junk_html)
         )
         assert await ae.fetch_article_text("https://example.com/junk") == ""
 
     async def test_网络异常返回空字符串(self, respx_mock):
-        respx_mock.get("https://example.com/err").mock(
-            side_effect=httpx.ConnectError("boom")
-        )
+        respx_mock.get("https://example.com/err").mock(side_effect=httpx.ConnectError("boom"))
         assert await ae.fetch_article_text("https://example.com/err") == ""
 
     async def test_空URL直接返回空(self):
@@ -114,16 +110,10 @@ class TestFetchArticleText:
     async def test_并发抓取返回成功项(self, respx_mock):
         html = f"<html><body><p>{LONG_TEXT}</p></body></html>"
         respx_mock.get("https://example.com/0").mock(
-            return_value=httpx.Response(
-                200, headers={"content-type": "text/html"}, text=html
-            )
+            return_value=httpx.Response(200, headers={"content-type": "text/html"}, text=html)
         )
-        respx_mock.get("https://example.com/1").mock(
-            side_effect=httpx.ConnectError("boom")
-        )
-        result = await ae.fetch_article_texts(
-            ["https://example.com/0", "https://example.com/1"]
-        )
+        respx_mock.get("https://example.com/1").mock(side_effect=httpx.ConnectError("boom"))
+        result = await ae.fetch_article_texts(["https://example.com/0", "https://example.com/1"])
         assert list(result.keys()) == ["https://example.com/0"]
 
     async def test_空列表返回空字典(self):
@@ -142,7 +132,7 @@ class TestDecode:
         assert "中文编码测试" in ae._decode(r)
 
     def test_无编码声明时回退UTF8(self):
-        r = httpx.Response(200, content="<p>中文内容测试</p>".encode("utf-8"))
+        r = httpx.Response(200, content="<p>中文内容测试</p>".encode())
         assert "中文内容测试" in ae._decode(r)
 
     def test_GBK字节在无声明时也能解出(self):

@@ -22,7 +22,9 @@ def register_exception_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(BusinessError)
     async def _biz(_: Request, exc: BusinessError) -> JSONResponse:
-        return JSONResponse(status_code=status.HTTP_200_OK, content=error(code=exc.code, message=exc.message))
+        return JSONResponse(
+            status_code=status.HTTP_200_OK, content=error(code=exc.code, message=exc.message)
+        )
 
     @app.exception_handler(RequestValidationError)
     async def _validation(_: Request, exc: RequestValidationError) -> JSONResponse:
@@ -48,5 +50,6 @@ def register_exception_handlers(app: FastAPI) -> None:
     @app.exception_handler(Exception)
     async def _unknown(_: Request, exc: Exception) -> JSONResponse:
         return JSONResponse(
-            status_code=status.HTTP_200_OK, content=error(code=500, message=f"服务器内部错误: {exc}")
+            status_code=status.HTTP_200_OK,
+            content=error(code=500, message=f"服务器内部错误: {exc}"),
         )

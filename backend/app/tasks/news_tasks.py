@@ -7,14 +7,13 @@ NullPool 独立引擎，避免 asyncpg 连接跨事件循环失效。
 
 import asyncio
 import logging
-from typing import Optional
 
 from app.celery_app import celery_app
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
-_loop: Optional[asyncio.AbstractEventLoop] = None
+_loop: asyncio.AbstractEventLoop | None = None
 
 
 def _get_loop() -> asyncio.AbstractEventLoop:
@@ -62,6 +61,6 @@ def collect_weather_news(
         stat = _run(_job())
         logger.info("气象资讯采集完成: %s", stat)
         return {"ok": True, **stat}
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         logger.exception("气象资讯采集失败")
         return {"ok": False, "error": str(exc)}

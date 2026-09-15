@@ -63,7 +63,8 @@ test.describe('我的行程', () => {
   })
 
   test('删除行程后列表恢复空态', async ({ page, request }) => {
-    const account = await prepareLoggedIn(page, request, 'e2e_del')
+    // 这条用例自己会把行程删掉，无需收尾清理，所以不接住返回的 account
+    await prepareLoggedIn(page, request, 'e2e_del')
     await page.goto('/itinerary')
     await expect(pageTitle(page)).toBeVisible({ timeout: 20_000 })
 

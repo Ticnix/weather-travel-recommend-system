@@ -92,7 +92,5 @@ def load_documents(directory: str | Path | None = None) -> list[TextChunk]:
         title = _extract_title(text, file.name)
         parts = split_text(text, chunk_size, overlap)
         for idx, part in enumerate(parts):
-            chunks.append(
-                TextChunk(title=title, source=file.name, chunk_index=idx, content=part)
-            )
+            chunks.append(TextChunk(title=title, source=file.name, chunk_index=idx, content=part))
     return chunks

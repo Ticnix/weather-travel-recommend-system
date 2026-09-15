@@ -66,7 +66,9 @@ class TestReplyFlow:
 
     async def test_未回复时reply为空(self, client, auth_headers):
         await client.post("/api/v1/feedback", headers=auth_headers, json={"content": "待处理"})
-        item = (await client.get("/api/v1/feedback", headers=auth_headers)).json()["data"]["items"][0]
+        item = (await client.get("/api/v1/feedback", headers=auth_headers)).json()["data"]["items"][
+            0
+        ]
         assert item["reply"] is None
         assert item["reply_at"] is None
 
@@ -81,13 +83,11 @@ class TestPrivacyIsolation:
         # 另一个用户提交一条
         other = {"username": "fb_other", "password": "Pass@123456"}
         await client.post("/api/v1/users/register", json=other)
-        token = (
-            await client.post("/api/v1/users/login", json=other)
-        ).json()["data"]["access_token"]
+        token = (await client.post("/api/v1/users/login", json=other)).json()["data"][
+            "access_token"
+        ]
         other_headers = {"Authorization": f"Bearer {token}"}
-        await client.post(
-            "/api/v1/feedback", headers=other_headers, json={"content": "别人的反馈"}
-        )
+        await client.post("/api/v1/feedback", headers=other_headers, json={"content": "别人的反馈"})
 
         # 只应看到自己那条，且 total 与实际条数一致
         r = await client.get("/api/v1/feedback", headers=auth_headers)
@@ -117,9 +117,9 @@ class TestPrivacyIsolation:
 
         other = {"username": "fb_other2", "password": "Pass@123456"}
         await client.post("/api/v1/users/register", json=other)
-        token = (
-            await client.post("/api/v1/users/login", json=other)
-        ).json()["data"]["access_token"]
+        token = (await client.post("/api/v1/users/login", json=other)).json()["data"][
+            "access_token"
+        ]
 
         r = await client.get(
             f"/api/v1/feedback/{fid}", headers={"Authorization": f"Bearer {token}"}

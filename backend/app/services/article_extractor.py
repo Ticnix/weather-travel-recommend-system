@@ -28,8 +28,14 @@ _MIN_TEXT_LEN = 250
 
 # 页脚 / 导航特征词：命中多个且篇幅很短时判定为无效正文
 _JUNK_MARKERS = (
-    "ICP备", "公网安备", "网站标识码", "版权所有",
-    "主办单位", "联系方式：", "网站地图", "免责声明",
+    "ICP备",
+    "公网安备",
+    "网站标识码",
+    "版权所有",
+    "主办单位",
+    "联系方式：",
+    "网站地图",
+    "免责声明",
 )
 
 
@@ -38,6 +44,7 @@ def _looks_like_junk(text: str) -> bool:
     if len(text) >= 600:  # 长文本基本是正文，不做特征词误伤
         return False
     return sum(1 for m in _JUNK_MARKERS if m in text) >= 2
+
 
 _HEADERS = {
     "User-Agent": (
@@ -49,14 +56,40 @@ _HEADERS = {
 
 # 这些标签内的文本不是正文
 _SKIP_TAGS = {
-    "script", "style", "noscript", "iframe", "svg", "canvas",
-    "nav", "header", "footer", "form", "select", "option", "button",
+    "script",
+    "style",
+    "noscript",
+    "iframe",
+    "svg",
+    "canvas",
+    "nav",
+    "header",
+    "footer",
+    "form",
+    "select",
+    "option",
+    "button",
 }
 
 # 块级标签：前后插入换行，保证段落边界
 _BLOCK_TAGS = {
-    "p", "div", "br", "li", "tr", "section", "article", "blockquote",
-    "h1", "h2", "h3", "h4", "h5", "h6", "td", "th", "pre",
+    "p",
+    "div",
+    "br",
+    "li",
+    "tr",
+    "section",
+    "article",
+    "blockquote",
+    "h1",
+    "h2",
+    "h3",
+    "h4",
+    "h5",
+    "h6",
+    "td",
+    "th",
+    "pre",
 }
 
 
@@ -152,9 +185,10 @@ async def fetch_article_text(
         logger.info("正文抓取失败（%s）: %s", url[:60], exc)
         return ""
 
-    if "html" not in resp.headers.get("content-type", "").lower() and "text" not in resp.headers.get(
-        "content-type", ""
-    ).lower():
+    if (
+        "html" not in resp.headers.get("content-type", "").lower()
+        and "text" not in resp.headers.get("content-type", "").lower()
+    ):
         return ""
 
     parser = _ArticleParser()

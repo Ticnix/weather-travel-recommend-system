@@ -80,9 +80,7 @@ class TestSuggestPlaces:
     async def test_高德返回失败状态时返回空(self, monkeypatch, respx_mock):
         monkeypatch.setattr(amap_client.settings, "AMAP_API_KEY", "fake-key")
         respx_mock.get("https://restapi.amap.com/v3/assistant/inputtips").mock(
-            return_value=httpx.Response(
-                200, json={"status": "0", "info": "INVALID_USER_KEY"}
-            )
+            return_value=httpx.Response(200, json={"status": "0", "info": "INVALID_USER_KEY"})
         )
         assert await amap_client.suggest_places("猎德") == []
 

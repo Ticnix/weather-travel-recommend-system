@@ -1,4 +1,4 @@
-﻿from geoalchemy2 import Geometry
+from geoalchemy2 import Geometry
 from sqlalchemy import Boolean, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -14,7 +14,9 @@ class Landmark(Base, TimestampMixin):
     name: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
     description: Mapped[str | None] = mapped_column(String(512), nullable=True)
     # PostGIS 地理点（EPSG:4326 经纬度）
-    location: Mapped[object] = mapped_column(Geometry(geometry_type="POINT", srid=4326), nullable=False)
+    location: Mapped[object] = mapped_column(
+        Geometry(geometry_type="POINT", srid=4326), nullable=False
+    )
     altitude: Mapped[float | None] = mapped_column(nullable=True)  # 海拔/相对高度 m
     category: Mapped[str | None] = mapped_column(String(32), nullable=True)  # 景点/地标/场馆...
     icon: Mapped[str | None] = mapped_column(String(255), nullable=True)

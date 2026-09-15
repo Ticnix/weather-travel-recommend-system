@@ -42,7 +42,9 @@ async def list_news(
             stmt = stmt.where(News.is_published.is_(True))
         total = await db.scalar(select(func.count()).select_from(stmt.subquery()))
         rows = await db.scalars(
-            stmt.order_by(News.is_top.desc(), News.id.desc()).offset((page - 1) * page_size).limit(page_size)
+            stmt.order_by(News.is_top.desc(), News.id.desc())
+            .offset((page - 1) * page_size)
+            .limit(page_size)
         )
         return {
             "items": [NewsOut.model_validate(n).model_dump() for n in rows],
@@ -112,7 +114,10 @@ async def create_news(
 
 @router.put("/{news_id}", response_model=dict)
 async def update_news(
-    news_id: int, payload: NewsUpdate, current: CurrentUser, db: Annotated[AsyncSession, Depends(get_db)]
+    news_id: int,
+    payload: NewsUpdate,
+    current: CurrentUser,
+    db: Annotated[AsyncSession, Depends(get_db)],
 ) -> dict:
     news = await db.get(News, news_id)
     if news is None:

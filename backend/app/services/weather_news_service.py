@@ -48,7 +48,14 @@ CATEGORY_FORECAST = "news"  # 天气预报简报（归入普通资讯）
 
 # 广州本地关键词：用于过滤资讯，保证「气象资讯」板块内容与广州相关
 LOCAL_KEYWORDS: tuple[str, ...] = (
-    "广州", "广东", "华南", "粤", "珠江", "珠三角", "花城", "羊城",
+    "广州",
+    "广东",
+    "华南",
+    "粤",
+    "珠江",
+    "珠三角",
+    "花城",
+    "羊城",
 )
 
 # Tavily 本地资讯搜索词（每条消耗 1 次搜索额度）；偏向「新闻」而非通用天气页
@@ -60,8 +67,15 @@ TAVILY_LOCAL_QUERIES: tuple[str, ...] = (
 
 # 通用天气导航页特征词：这类页面只有预报入口、没有资讯内容，采集时丢弃
 GENERIC_TITLE_MARKERS: tuple[str, ...] = (
-    "天气预报", "天气查询", "15天", "7天天气", "气象台,tqyb", "城市预报",
-    "信息公开", "门户网站", "网站首页",
+    "天气预报",
+    "天气查询",
+    "15天",
+    "7天天气",
+    "气象台,tqyb",
+    "城市预报",
+    "信息公开",
+    "门户网站",
+    "网站首页",
 )
 
 
@@ -145,9 +159,7 @@ async def fetch_weather_news(limit: int = 15, local_only: bool = True) -> list[d
     - local_only=True：只保留与广州/广东相关的条目（资讯板块本地化要求）
     - 返回：[{title, url}, ...]，url 统一为 https 绝对地址（详情页要内嵌展示）
     """
-    async with httpx.AsyncClient(
-        timeout=15.0, headers=_HEADERS, follow_redirects=True
-    ) as client:
+    async with httpx.AsyncClient(timeout=15.0, headers=_HEADERS, follow_redirects=True) as client:
         try:
             resp = await client.get(WEATHER_NEWS_URL)
             resp.raise_for_status()
@@ -187,9 +199,7 @@ async def fetch_weather_news(limit: int = 15, local_only: bool = True) -> list[d
     return results
 
 
-async def collect_news_articles(
-    db: AsyncSession, limit: int = 15, local_only: bool = True
-) -> dict:
+async def collect_news_articles(db: AsyncSession, limit: int = 15, local_only: bool = True) -> dict:
     """采集中国天气网气象新闻并写入 news 表（按标题去重，默认只保留本地相关）。"""
     articles = await fetch_weather_news(limit=limit, local_only=local_only)
     # 并发抓取原文正文：抓到的直接入库渲染，抓不到的仍可点原文链接

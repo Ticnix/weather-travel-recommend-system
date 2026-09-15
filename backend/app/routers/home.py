@@ -4,8 +4,6 @@
 实时天气、今日提醒、穿搭建议、近期行程（含逐条天气提醒）。
 """
 
-from typing import Optional
-
 from fastapi import APIRouter, Query
 
 from app.core.deps import OptionalUser
@@ -18,7 +16,7 @@ router = APIRouter(prefix="/api/v1/home", tags=["首页"])
 @router.get("/dashboard", response_model=dict)
 async def dashboard(
     current: OptionalUser = None,
-    city: Optional[str] = Query(None, description="城市，默认广州"),
+    city: str | None = Query(None, description="城市，默认广州"),
 ) -> dict:
     """首页聚合数据。
 

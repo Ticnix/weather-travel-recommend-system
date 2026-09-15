@@ -7,7 +7,7 @@
   文件导入与导出，适合写"三天两夜怎么玩"这类内容。
 """
 
-from sqlalchemy import ForeignKey, Integer, String, Text
+from sqlalchemy import ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base, TimestampMixin

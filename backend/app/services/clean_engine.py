@@ -86,8 +86,9 @@ UNIT_SUFFIX_RULES: list[tuple[str, str, str, str, object]] = [
 ]
 
 
-def clean_csv(input_path: str | Path, output_path: str | Path,
-              dedup_keys: list[str] | None = None) -> CleanStats:
+def clean_csv(
+    input_path: str | Path, output_path: str | Path, dedup_keys: list[str] | None = None
+) -> CleanStats:
     """清洗单个 CSV 文件，输出清洗后 CSV，返回统计与日志。
 
     Args:
@@ -115,10 +116,14 @@ def clean_csv(input_path: str | Path, output_path: str | Path,
             if col.endswith(suffix):
                 mask = pd.to_numeric(df[col], errors="coerce").notna()
                 if mask.any():
-                    df.loc[mask, target_col] = pd.to_numeric(df.loc[mask, col], errors="coerce").apply(conv)
+                    df.loc[mask, target_col] = pd.to_numeric(
+                        df.loc[mask, col], errors="coerce"
+                    ).apply(conv)
                     df.loc[mask, target_col] = df.loc[mask, target_col].round(2)
                     standardized_cols += 1
-                    stats.log(f"单位标准化：{col}（{orig_unit}→{target_unit}）转换 {int(mask.sum())} 个值 → {target_col}")
+                    stats.log(
+                        f"单位标准化：{col}（{orig_unit}→{target_unit}）转换 {int(mask.sum())} 个值 → {target_col}"
+                    )
                 df = df.drop(columns=[col])
                 break
     stats.unit_standardized = standardized_cols

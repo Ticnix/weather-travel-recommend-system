@@ -1,33 +1,32 @@
 """气象模块 Schema。"""
 
 from datetime import datetime
-from typing import Any, Optional
 
 from pydantic import BaseModel, ConfigDict
 
 
 class CurrentWeatherOut(BaseModel):
     time: datetime
-    temperature: Optional[float] = None
-    feels_like: Optional[float] = None
-    humidity: Optional[float] = None
-    pressure: Optional[float] = None
-    wind_speed: Optional[float] = None
-    wind_direction: Optional[str] = None
-    weather_code: Optional[str] = None
-    weather_desc: Optional[str] = None
-    precipitation: Optional[float] = None
-    visibility: Optional[float] = None
+    temperature: float | None = None
+    feels_like: float | None = None
+    humidity: float | None = None
+    pressure: float | None = None
+    wind_speed: float | None = None
+    wind_direction: str | None = None
+    weather_code: str | None = None
+    weather_desc: str | None = None
+    precipitation: float | None = None
+    visibility: float | None = None
 
 
 class ForecastOut(BaseModel):
     time: datetime
-    temp_max: Optional[float] = None
-    temp_min: Optional[float] = None
-    precipitation_sum: Optional[float] = None
-    wind_speed_max: Optional[float] = None
-    weather_code: Optional[str] = None
-    weather_desc: Optional[str] = None
+    temp_max: float | None = None
+    temp_min: float | None = None
+    precipitation_sum: float | None = None
+    wind_speed_max: float | None = None
+    weather_code: str | None = None
+    weather_desc: str | None = None
 
 
 class WeatherHistoryOut(BaseModel):
@@ -35,24 +34,24 @@ class WeatherHistoryOut(BaseModel):
 
     time: datetime
     location_code: str
-    temperature: Optional[float] = None
-    feels_like: Optional[float] = None
-    humidity: Optional[float] = None
-    pressure: Optional[float] = None
-    wind_speed: Optional[float] = None
-    wind_direction: Optional[str] = None
-    weather_code: Optional[str] = None
-    weather_desc: Optional[str] = None
-    precipitation: Optional[float] = None
-    visibility: Optional[float] = None
+    temperature: float | None = None
+    feels_like: float | None = None
+    humidity: float | None = None
+    pressure: float | None = None
+    wind_speed: float | None = None
+    wind_direction: str | None = None
+    weather_code: str | None = None
+    weather_desc: str | None = None
+    precipitation: float | None = None
+    visibility: float | None = None
     is_forecast: bool
 
 
 class SyncResult(BaseModel):
     ok: bool
-    location: Optional[str] = None
-    temperature: Optional[float] = None
-    weather_desc: Optional[str] = None
+    location: str | None = None
+    temperature: float | None = None
+    weather_desc: str | None = None
     alerts: int = 0
     daily: int = 0
-    error: Optional[str] = None
+    error: str | None = None

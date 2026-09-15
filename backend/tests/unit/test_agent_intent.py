@@ -81,7 +81,7 @@ class TestIntentTables:
         assert set(agent._STRONG_INTENT_KEYWORDS) <= {"weather", "outfit", "travel", "knowledge"}
 
     def test_工具意图集合正确(self):
-        assert agent.TOOL_INTENTS == {"weather", "travel", "outfit", "knowledge"}
+        assert {"weather", "travel", "outfit", "knowledge"} == agent.TOOL_INTENTS
 
     def test_每个意图都有强关键词(self):
         for intent in ("weather", "outfit", "travel", "knowledge"):

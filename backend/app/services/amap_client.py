@@ -85,7 +85,11 @@ async def geocode(address: str, city: str | None = None) -> dict[str, Any] | Non
             g = data["geocodes"][0]
             loc = g.get("location", "").split(",")
             if len(loc) == 2:
-                return {"lng": float(loc[0]), "lat": float(loc[1]), "formatted": g.get("formatted_address", address)}
+                return {
+                    "lng": float(loc[0]),
+                    "lat": float(loc[1]),
+                    "formatted": g.get("formatted_address", address),
+                }
     except Exception as exc:  # noqa: BLE001
         logger.warning("高德地理编码失败: %s", exc)
     return None
@@ -194,8 +198,12 @@ async def plan_route(
     """
     # 优先走真实高德 API（驾车 + 公交，按耗时合并排序）
     if settings.AMAP_API_KEY:
-        driving = await _plan_driving_amap(origin, destination, city, origin_point, destination_point)
-        transit = await _plan_transit_amap(origin, destination, city, origin_point, destination_point)
+        driving = await _plan_driving_amap(
+            origin, destination, city, origin_point, destination_point
+        )
+        transit = await _plan_transit_amap(
+            origin, destination, city, origin_point, destination_point
+        )
         routes = []
         if driving and driving.get("routes"):
             routes.extend(driving["routes"])
@@ -237,7 +245,9 @@ async def _plan_transit_amap(
     }
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
-            resp = await client.get(f"{settings.AMAP_BASE_URL}/direction/transit/integrated", params=params)
+            resp = await client.get(
+                f"{settings.AMAP_BASE_URL}/direction/transit/integrated", params=params
+            )
             resp.raise_for_status()
             data = resp.json()
         if data.get("status") != "1" or not data.get("route", {}).get("transits"):

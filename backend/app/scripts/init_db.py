@@ -1,4 +1,4 @@
-﻿"""数据库初始化脚本。
+"""数据库初始化脚本。
 
 用法（在 backend 目录、venv 激活后）：
     python -m app.scripts.init_db
@@ -36,9 +36,7 @@ DEFAULT_ADMIN_PASSWORD = "Admin@123456"
 
 async def _seed_admin(conn: AsyncConnection) -> None:
     """播种默认管理员账号（已存在则跳过，保证幂等）。"""
-    exists = await conn.execute(
-        select(User.id).where(User.username == DEFAULT_ADMIN_USERNAME)
-    )
+    exists = await conn.execute(select(User.id).where(User.username == DEFAULT_ADMIN_USERNAME))
     if exists.scalar():
         print(f">>> 管理员 {DEFAULT_ADMIN_USERNAME} 已存在，跳过播种")
         return

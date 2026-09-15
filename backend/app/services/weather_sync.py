@@ -5,7 +5,7 @@
 - 预警暂不入库，由接口实时返回（后续可建 alerts 表）
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -36,9 +36,7 @@ async def fetch_and_store(
     past_days>0 时回补过去 N 天日统计作为实测写入（历史天气）。
     use_celery_engine=True 时使用独立的 NullPool 引擎，避免 Celery 跨 asyncio.run 复用连接池出错。
     """
-    bundle = await weather_client.fetch(
-        latitude, longitude, location_code, past_days=past_days
-    )
+    bundle = await weather_client.fetch(latitude, longitude, location_code, past_days=past_days)
     factory = _make_session() if use_celery_engine else AsyncSessionLocal
     async with factory() as db:
         await store_weather(db, bundle)
@@ -75,7 +73,7 @@ async def store_weather(db: AsyncSession, bundle: WeatherBundle) -> None:
     for f in bundle.daily:
         # 用日期 + 00:00:00Z 作为日时间戳，便于按天去重
         try:
-            day = datetime.strptime(f.date, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+            day = datetime.strptime(f.date, "%Y-%m-%d").replace(tzinfo=UTC)
         except ValueError:
             continue
         rows.append(
@@ -197,9 +195,10 @@ async def page_records(
         if forecast is not None:
             conditions.append(WeatherHistory.is_forecast.is_(forecast))
 
-        total = await db.scalar(
-            select(func.count()).select_from(WeatherHistory).where(*conditions)
-        ) or 0
+        total = (
+            await db.scalar(select(func.count()).select_from(WeatherHistory).where(*conditions))
+            or 0
+        )
 
         stmt = (
             select(WeatherHistory)
@@ -221,12 +220,12 @@ async def agg_daily(
 
     返回 [{date: 'YYYY-MM-DD', temperature_avg, humidity_avg, precipitation_avg, ...}]。
     """
-    from sqlalchemy import cast, Date, func
+    from sqlalchemy import Date, cast, func
 
     async with AsyncSessionLocal() as db:
         from datetime import timedelta
 
-        since = datetime.now(timezone.utc) - timedelta(days=days)
+        since = datetime.now(UTC) - timedelta(days=days)
         # 聚合表达式
         aggs = {f"{m}_avg": func.avg(getattr(WeatherHistory, m)) for m in metrics}
         stmt = (
@@ -242,4 +241,6 @@ async def agg_daily(
         )
         rows = await db.execute(stmt)
         cols = ["date", *aggs.keys()]
-        return [dict(zip(cols, row)) for row in rows.all()]
+        # strict=True：列名与查询结果的列数必须一致，
+        # 不一致说明 SQL 改了但 cols 没同步——这种错必须当场炸，不能静默少字段
+        return [dict(zip(cols, row, strict=True)) for row in rows.all()]

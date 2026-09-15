@@ -1,0 +1,56 @@
+# ============================================================================
+# pre-commit：提交前本地自动检查
+#
+# 与 CI 的关系（不是重复劳动）：
+#   pre-commit —— 在 `git commit` 那一瞬间检查，几秒内反馈，问题还没进历史
+#   CI         —— 在 push 之后检查，作为最后一道防线
+# 本地能拦住的就别让它跑到 CI，省得"推上去才发现少个分号"再补一个提交。
+#
+# 一次性初始化（每台机器做一次）：
+#   pip install pre-commit
+#   pre-commit install
+#
+# 手动全量检查：
+#   pre-commit run --all-files
+#
+# 紧急情况想跳过（不推荐）：
+#   git commit --no-verify
+# ============================================================================
+
+repos:
+  # ── 后端：ruff 检查 + 格式化 ──────────────────────────────────────────
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.7
+    hooks:
+      - id: ruff
+        name: ruff · 后端静态检查
+        args: [--fix] # 能自动修的（导入排序、无用导入）直接改掉
+        files: ^backend/.*\.py$
+
+      - id: ruff-format
+        name: ruff · 后端格式化
+        files: ^backend/.*\.py$
+
+  # ── 通用文件卫生（只检查、不改文件）───────────────────────────────────
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      # 防止把 Git 冲突标记 <<<<<<< 直接提交上去
+      - id: check-merge-conflict
+
+      # 拦截误提交的大文件（如 E2E 录像、数据集、node_modules 压缩包）
+      - id: check-added-large-files
+        args: [--maxkb=1024]
+
+  # ── 前端：eslint + TypeScript 类型检查 ────────────────────────────────
+  # 用本地 Python 脚本而不是直接写 npm 命令，原因见脚本注释：
+  # Windows 下 npm 实际是 npm.cmd，pre-commit 按字符串找可执行文件会找不到。
+  - repo: local
+    hooks:
+      - id: frontend-check
+        name: 前端 · eslint + 类型检查
+        entry: python scripts/precommit_frontend.py
+        language: system
+        pass_filenames: false
+        # 只有改到前端源码时才触发，避免改后端文档也要等前端检查
+        files: ^frontend-user/.*\.(ts|tsx|js|jsx)$

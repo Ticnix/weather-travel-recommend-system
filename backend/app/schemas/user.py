@@ -1,15 +1,14 @@
 """用户相关 Pydantic Schema。"""
 
 from datetime import datetime
-from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
 
 class UserBase(BaseModel):
     username: str = Field(..., min_length=3, max_length=64)
-    nickname: Optional[str] = None
-    email: Optional[str] = None
+    nickname: str | None = None
+    email: str | None = None
     role: str = "user"
 
 
@@ -18,18 +17,18 @@ class UserCreate(UserBase):
 
 
 class UserUpdate(BaseModel):
-    nickname: Optional[str] = None
-    email: Optional[str] = None
-    avatar: Optional[str] = None
-    role: Optional[str] = None
-    is_active: Optional[bool] = None
+    nickname: str | None = None
+    email: str | None = None
+    avatar: str | None = None
+    role: str | None = None
+    is_active: bool | None = None
 
 
 class UserOut(UserBase):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
-    avatar: Optional[str] = None
+    avatar: str | None = None
     is_active: bool = True
     created_at: datetime
     updated_at: datetime

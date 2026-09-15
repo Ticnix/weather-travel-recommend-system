@@ -105,7 +105,16 @@ class TestNewsLocalization:
 
     @pytest.mark.parametrize(
         "text",
-        ["广州天气", "广东预警", "华南地区", "珠江夜游", "粤式早茶", "广州塔", "花城广场", "羊城晚报"],
+        [
+            "广州天气",
+            "广东预警",
+            "华南地区",
+            "珠江夜游",
+            "粤式早茶",
+            "广州塔",
+            "花城广场",
+            "羊城晚报",
+        ],
     )
     def test_本地关键词命中(self, text):
         assert wns._is_local(text) is True
@@ -164,7 +173,7 @@ class TestNoteImportParsing:
         assert items[0]["title"] == "上海行"
 
     def test_解析json数组批量(self):
-        raw = '[{"title":"A","content":"1"},{"title":"B","content":"2"}]'.encode()
+        raw = b'[{"title":"A","content":"1"},{"title":"B","content":"2"}]'
         items = parse_import_file("a.json", raw)
         assert len(items) == 2
 
