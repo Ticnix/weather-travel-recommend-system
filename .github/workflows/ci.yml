@@ -96,7 +96,14 @@ jobs:
       - name: 为测试库补装 PostGIS 扩展
         run: |
           docker exec ${{ job.services.postgres.id }} bash -c \
-            "apt-get update -qq && apt-get install -y -qq postgresql-17-postgis-3"
+            "apt-get update -qq -o Acquire::Retries=3 && \
+             apt-get install -y -qq --no-install-recommends postgresql-17-postgis-3"
+          # 立刻验证两个扩展都真的可用（缺任何一个后续建表都会失败），
+          # 把结果打进注解区，这样即使看不到完整日志也能定位
+          docker exec ${{ job.services.postgres.id }} \
+            psql -U admin -d postgres -tAc \
+            "SELECT name FROM pg_available_extensions WHERE name IN ('vector','postgis') ORDER BY name" \
+            | while read -r ext; do echo "::notice::可用扩展: $ext"; done
 
       - uses: actions/setup-python@v5
         with:
@@ -110,14 +117,47 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt -r requirements-dev.txt
 
+      - name: 诊断环境（CI 与本地差异往往就藏在这里）
+        working-directory: backend
+        run: |
+          # 把关键信息用 ::notice:: 打出来——完整日志需要登录才能看，
+          # 而注解区未登录也可读，便于快速定位问题
+          python --version 2>&1 | while IFS= read -r l; do echo "::notice::$l"; done
+          pytest --version 2>&1 | while IFS= read -r l; do echo "::notice::$l"; done
+          python - <<'PY' 2>&1 | while IFS= read -r l; do echo "::notice::$l"; done
+          import importlib
+          for m in ("pytest_cov", "pytest_asyncio", "respx", "asyncpg", "geoalchemy2", "pgvector"):
+              try:
+                  importlib.import_module(m)
+                  print(f"依赖可用 {m}")
+              except Exception as exc:
+                  print(f"依赖缺失 {m}: {exc}")
+          PY
+
       # 测试库由 conftest.py 自动创建（weather_db_test）并建表，
       # 这里只需把连接串指过去；外部依赖（和风/高德/Tavily/LLM）全部打桩，
       # 所以 CI 里不需要任何 API Key，也不消耗额度
+      #
+      # 失败时把首尾日志输出成注解：pytest 的"用法错误"(exit 4) 会把原因
+      # 写在最前面，而"测试失败"的信息在最后面，两头都取才够定位。
       - name: 运行测试
         working-directory: backend
         env:
           TEST_DB_URL: postgresql+asyncpg://admin:123456@127.0.0.1:5432/weather_db_test
-        run: pytest
+        run: |
+          set +e
+          pytest 2>&1 | tee pytest-output.log
+          code=${PIPESTATUS[0]}
+          if [ "$code" -ne 0 ]; then
+            echo "::error::pytest 退出码 $code（4=用法错误 3=内部错误 1=有用例失败 5=没收集到用例）"
+            head -12 pytest-output.log | while IFS= read -r line; do
+              echo "::error::[头部] $line"
+            done
+            tail -12 pytest-output.log | while IFS= read -r line; do
+              echo "::error::[尾部] $line"
+            done
+          fi
+          exit "$code"
 
       # 覆盖率 HTML 报告留档，需要时下载查看哪几行没被覆盖
       - name: 上传覆盖率报告

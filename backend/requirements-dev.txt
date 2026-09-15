@@ -1,10 +1,15 @@
 # ===== 开发/测试依赖（与运行依赖分开，生产镜像可不装）=====
 # 安装：pip install -r requirements-dev.txt
+#
+# ⚠️ 这里用 == 精确锁定版本，而 requirements.txt（运行依赖）用 >=。
+# 原因：测试工具的行为会直接影响"CI 是否绿"，必须保证本地与 CI 完全一致。
+# 曾出现过 CI 装到更新的 pytest 插件后行为变化、本地却复现不了的情况，
+# 排查成本远高于定期手动升级的收益。
 
-pytest>=8.0.0            # 测试框架
-pytest-asyncio>=0.24.0   # 支持 async def 测试用例
-pytest-cov>=6.0.0        # 覆盖率统计（生成 HTML + 终端报告）
-respx>=0.21.0            # Mock httpx 请求（拦截外部 API：和风/高德/Tavily）
+pytest==9.1.1            # 测试框架
+pytest-asyncio==1.4.0    # 支持 async def 测试用例
+pytest-cov==7.1.0        # 覆盖率统计（生成 HTML + 终端报告）
+respx==0.23.1            # Mock httpx 请求（拦截外部 API：和风/高德/Tavily）
 
 # 代码检查（Day 31 CI 使用）
-ruff>=0.8.0              # Python 静态检查 + 格式化
+ruff==0.16.7             # Python 静态检查 + 格式化
