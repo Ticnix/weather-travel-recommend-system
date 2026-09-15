@@ -1,0 +1,30 @@
+# 临时排查用：最小化探针，确认 Actions 环境本身是否正常。
+# 定位完问题后会删除，不留在仓库里。
+name: CI-Debug
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+jobs:
+  probe:
+    name: 环境探针
+    runs-on: ubuntu-latest
+    steps:
+      - name: 基础环境
+        run: |
+          echo "=== runner 启动成功 ==="
+          python3 --version
+          node --version
+          docker --version
+
+      - uses: actions/checkout@v4
+
+      - name: 检出后确认仓库内容
+        run: |
+          echo "=== 工作目录 ==="
+          pwd
+          ls -1 | head -20
+          echo "=== 后端依赖文件 ==="
+          ls -1 backend/requirements*.txt
