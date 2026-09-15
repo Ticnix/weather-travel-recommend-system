@@ -8,8 +8,8 @@ from app.core.config import settings
 from app.core.deps import CurrentUser
 from app.core.response import success
 from app.db.session import get_db
-from app.models.notification import NotificationLog, PushSubscription
-from app.schemas.notification import SubscribeIn, UnsubscribeIn
+from app.models.notification import NotificationLog, NotificationPref, PushSubscription
+from app.schemas.notification import MorningReportIn, SubscribeIn, UnsubscribeIn
 from app.services import notification_service
 
 router = APIRouter(prefix="/api/v1/notifications", tags=["通知"])
@@ -117,6 +117,47 @@ async def my_logs(
             ],
         }
     )
+
+
+@router.get("/morning-report", response_model=dict)
+async def get_morning_report(
+    current: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """查询每日早报偏好（未设置过时返回默认值：开启、7 点推送）。"""
+    pref = (
+        await db.execute(select(NotificationPref).where(NotificationPref.user_id == current.id))
+    ).scalar_one_or_none()
+    return success(
+        data={
+            "enabled": pref.morning_enabled if pref else True,
+            "hour": pref.morning_hour if pref else 7,
+        }
+    )
+
+
+@router.put("/morning-report", response_model=dict)
+async def update_morning_report(
+    payload: MorningReportIn,
+    current: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """设置每日早报的开关与推送时间（关闭开关后分发任务将不再推送该用户）。"""
+    pref = (
+        await db.execute(select(NotificationPref).where(NotificationPref.user_id == current.id))
+    ).scalar_one_or_none()
+    if pref:
+        pref.morning_enabled = payload.enabled
+        pref.morning_hour = payload.hour
+    else:
+        pref = NotificationPref(
+            user_id=current.id,
+            morning_enabled=payload.enabled,
+            morning_hour=payload.hour,
+        )
+        db.add(pref)
+    await db.commit()
+    return success(data={"enabled": payload.enabled, "hour": payload.hour})
 
 
 @router.post("/test", response_model=dict)

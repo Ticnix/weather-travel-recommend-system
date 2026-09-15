@@ -109,3 +109,41 @@ class TestSendAndLogs:
         # 数据库层面也应有记录
         count = len((await db.execute(select(NotificationLog))).scalars().all())
         assert count == 2
+
+
+class TestMorningReportPrefs:
+    """每日早报偏好（Day 35）：开关 + 推送小时。"""
+
+    async def test_未设置时返回默认值(self, client, auth_headers):
+        resp = await client.get("/api/v1/notifications/morning-report", headers=auth_headers)
+        assert resp.status_code == 200
+        data = resp.json()["data"]
+        assert data == {"enabled": True, "hour": 7}
+
+    async def test_设置后可查回(self, client, auth_headers):
+        resp = await client.put(
+            "/api/v1/notifications/morning-report",
+            headers=auth_headers,
+            json={"enabled": False, "hour": 8},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["data"] == {"enabled": False, "hour": 8}
+
+        resp = await client.get("/api/v1/notifications/morning-report", headers=auth_headers)
+        assert resp.json()["data"] == {"enabled": False, "hour": 8}
+
+    async def test_推送小时超出范围被拒(self, client, auth_headers):
+        resp = await client.put(
+            "/api/v1/notifications/morning-report",
+            headers=auth_headers,
+            json={"enabled": True, "hour": 3},  # 只允许 5~22 点
+        )
+        assert resp.status_code == 422
+
+    async def test_未登录不能读写偏好(self, client):
+        assert (await client.get("/api/v1/notifications/morning-report")).status_code == 401
+        assert (
+            await client.put(
+                "/api/v1/notifications/morning-report", json={"enabled": True, "hour": 7}
+            )
+        ).status_code == 401

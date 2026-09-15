@@ -1,6 +1,6 @@
-"""通知数据模型：推送订阅 + 发送记录。"""
+"""通知数据模型：推送订阅、发送记录、通知偏好。"""
 
-from sqlalchemy import Boolean, ForeignKey, String, Text
+from sqlalchemy import Boolean, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base, TimestampMixin
@@ -44,3 +44,24 @@ class NotificationLog(Base, TimestampMixin):
     url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     status: Mapped[str] = mapped_column(String(16), nullable=False)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class NotificationPref(Base, TimestampMixin):
+    """每个用户一条偏好记录（user_id 唯一）。
+
+    免打扰设计：morning_hour 的粒度是「小时」——
+    Celery beat 每小时整点分发一次，按各用户设定的 hour 过滤，
+    避免为每个用户单独注册一个定时任务。
+    """
+
+    __tablename__ = "notification_prefs"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"),
+        unique=True,
+        index=True,
+        nullable=False,
+    )
+    morning_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    morning_hour: Mapped[int] = mapped_column(Integer, default=7, nullable=False)

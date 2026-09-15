@@ -54,3 +54,18 @@ export async function getNotificationLogs(): Promise<NotificationLogItem[]> {
   }
   return data.items
 }
+
+// ===== 每日早报偏好（Day 35）=====
+
+/** 查询早报偏好（未设置过时后端返回默认值：开启、7 点） */
+export async function getMorningReport(): Promise<{ enabled: boolean; hour: number }> {
+  return (await http.get('/notifications/morning-report')) as unknown as {
+    enabled: boolean
+    hour: number
+  }
+}
+
+/** 设置早报开关与推送小时（关闭后分发任务不再推送该用户） */
+export async function updateMorningReport(enabled: boolean, hour: number): Promise<void> {
+  await http.put('/notifications/morning-report', { enabled, hour })
+}

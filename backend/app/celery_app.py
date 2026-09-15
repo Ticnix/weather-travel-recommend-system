@@ -20,6 +20,7 @@ celery_app = Celery(
         "app.tasks.clean_tasks",
         "app.tasks.rag_tasks",
         "app.tasks.news_tasks",
+        "app.tasks.report_tasks",
     ],
 )
 
@@ -42,6 +43,12 @@ celery_app.conf.update(
         "collect-weather-news": {
             "task": "app.tasks.news_tasks.collect_weather_news",
             "schedule": crontab(hour="7,17", minute="30"),
+        },
+        # 每小时整点分发早报：按各用户设定的推送小时过滤（默认 7 点，
+        # 用户可改到 5~10 点之间的任意整点，免打扰粒度为小时）
+        "dispatch-morning-reports": {
+            "task": "app.tasks.report_tasks.dispatch_morning_reports",
+            "schedule": crontab(minute="0"),
         },
     },
 )

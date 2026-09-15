@@ -18,3 +18,10 @@ class SubscribeIn(BaseModel):
 
 class UnsubscribeIn(BaseModel):
     endpoint: str = Field(..., min_length=10, max_length=2000)
+
+
+class MorningReportIn(BaseModel):
+    """每日早报偏好（免打扰粒度为小时：5~22 点之间）。"""
+
+    enabled: bool
+    hour: int = Field(7, ge=5, le=22)

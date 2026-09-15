@@ -1,11 +1,13 @@
 ﻿import { useCallback, useEffect, useState } from 'react'
-import { Alert, Button, List, Space, Tag, Typography } from 'antd'
+import { Alert, Button, List, Select, Space, Switch, Tag, Typography } from 'antd'
 import {
+  getMorningReport,
   getNotificationLogs,
   getVapidKey,
   removeSubscription,
   saveSubscription,
   sendTestNotification,
+  updateMorningReport,
   type NotificationLogItem,
 } from '../api/notifications'
 
@@ -34,11 +36,25 @@ export default function NotificationSettings() {
   const [busy, setBusy] = useState<'enable' | 'disable' | 'test' | null>(null)
   const [logs, setLogs] = useState<NotificationLogItem[]>([])
   const [testResult, setTestResult] = useState<string | null>(null)
+  // 每日早报偏好
+  const [morningEnabled, setMorningEnabled] = useState(true)
+  const [morningHour, setMorningHour] = useState(7)
+  const [prefSaving, setPrefSaving] = useState(false)
 
   const refreshLogs = useCallback(() => {
     getNotificationLogs()
       .then(setLogs)
       .catch(() => setLogs([]))
+  }, [])
+
+  // 早报偏好：未设置过时后端返回默认值（开启、7 点）
+  useEffect(() => {
+    getMorningReport()
+      .then((pref) => {
+        setMorningEnabled(pref.enabled)
+        setMorningHour(pref.hour)
+      })
+      .catch(() => {})
   }, [])
 
   const detectState = useCallback(async () => {
@@ -110,6 +126,17 @@ export default function NotificationSettings() {
       refreshLogs()
     } finally {
       setBusy(null)
+    }
+  }
+
+  const saveMorningPref = async (enabled: boolean, hour: number) => {
+    setPrefSaving(true)
+    try {
+      await updateMorningReport(enabled, hour)
+      setMorningEnabled(enabled)
+      setMorningHour(hour)
+    } finally {
+      setPrefSaving(false)
     }
   }
 
@@ -194,6 +221,45 @@ export default function NotificationSettings() {
       {testResult && (
         <Alert type="info" showIcon message={`测试结果：${testResult}`} style={{ marginBottom: 16 }} />
       )}
+
+      {/* 每日早报（Day 35）：开关 + 推送时间（免打扰粒度为小时） */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 10,
+          flexWrap: 'wrap',
+          marginBottom: 16,
+          paddingTop: 14,
+          borderTop: '1px solid var(--jp-border)',
+        }}
+      >
+        <Switch
+          checked={morningEnabled}
+          loading={prefSaving}
+          onChange={(checked) => void saveMorningPref(checked, morningHour)}
+        />
+        <span style={{ fontSize: 13.5, color: 'var(--jp-ink)' }}>每日早报推送</span>
+        <span style={{ fontSize: 12, color: 'var(--jp-ink-3)' }}>
+          天气、提醒与今日行程的冲突提示，每天推送一次
+        </span>
+        {morningEnabled && (
+          <Space>
+            <Text style={{ fontSize: 12, color: 'var(--jp-ink-3)' }}>推送时间</Text>
+            <Select
+              size="small"
+              value={morningHour}
+              style={{ width: 100 }}
+              disabled={prefSaving}
+              onChange={(hour) => void saveMorningPref(morningEnabled, hour)}
+              options={Array.from({ length: 18 }, (_, i) => i + 5).map((h) => ({
+                value: h,
+                label: `${String(h).padStart(2, '0')}:00`,
+              }))}
+            />
+          </Space>
+        )}
+      </div>
 
       {logs.length > 0 && (
         <>
