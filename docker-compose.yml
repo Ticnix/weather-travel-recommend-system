@@ -1,10 +1,18 @@
 # 一键拉起整套业务系统：PostgreSQL(TimescaleDB+PostGIS+pgvector) / Redis /
 # FastAPI 后端 / Celery worker / 用户端 Nginx / 管理端 Nginx
 #
-# 用法：
-#   docker compose up -d --build     # 首次或代码变更后
-#   docker compose ps                # 查看各服务状态
-#   docker compose logs -f backend   # 跟踪后端日志
+# 两种使用模式（build 与 image 字段并存，互不冲突）：
+#   ① 本地开发（源码构建）：
+#      docker compose up -d --build
+#      → 按各 Dockerfile 构建并打上 image: 指定的标签
+#
+#   ② 部署 / 回滚（拉取 CI 发布到 GHCR 的镜像，不构建）：
+#      IMAGE_TAG=latest ./deploy.sh              # 部署主干最新版
+#      IMAGE_TAG=sha-4c3abe9 ./deploy.sh         # 部署/回滚到指定提交的版本
+#
+#   IMAGE_TAG 决定应用镜像（backend/celery/两个前端）用哪个版本——
+#   这正是"可回滚"的关键：回滚 = 用旧 tag 再跑一次 deploy.sh。
+#   postgres 镜像跟 PG 版本走（pg17），不随应用版本变化，故用固定 tag。
 #
 # 访问地址：
 #   用户端     http://localhost:8080
@@ -15,7 +23,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.pg
-    image: weather-pg-custom:pg17
+    image: ghcr.io/ticnix/weather-pg:pg17
     container_name: weather-pg
     environment:
       POSTGRES_USER: admin
@@ -51,11 +59,13 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    image: weather-backend:latest
+    image: ghcr.io/ticnix/weather-backend:${IMAGE_TAG:-latest}
     container_name: weather-backend
     working_dir: /app
     env_file:
-      - ./backend/.env
+      # 部署时可指定环境配置：ENV_FILE=./backend/.env.prod ./deploy.sh
+      # 本地开发默认使用 backend/.env
+      - ${ENV_FILE:-./backend/.env}
     environment:
       # 容器内需用 compose 服务名互访，覆盖 .env 中本地开发的 127.0.0.1
       DB_URL: postgresql+asyncpg://admin:123456@postgres:5432/weather_db
@@ -75,11 +85,13 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    image: weather-backend:latest
+    image: ghcr.io/ticnix/weather-backend:${IMAGE_TAG:-latest}
     container_name: weather-celery
     working_dir: /app
     env_file:
-      - ./backend/.env
+      # 部署时可指定环境配置：ENV_FILE=./backend/.env.prod ./deploy.sh
+      # 本地开发默认使用 backend/.env
+      - ${ENV_FILE:-./backend/.env}
     environment:
       DB_URL: postgresql+asyncpg://admin:123456@postgres:5432/weather_db
       REDIS_URL: redis://redis:6379/0
@@ -96,7 +108,7 @@ services:
     build:
       context: ./frontend-user
       dockerfile: Dockerfile
-    image: weather-frontend-user:latest
+    image: ghcr.io/ticnix/weather-frontend-user:${IMAGE_TAG:-latest}
     container_name: weather-frontend-user
     ports:
       - "8080:80"
@@ -109,7 +121,7 @@ services:
     build:
       context: ./frontend-admin
       dockerfile: Dockerfile
-    image: weather-frontend-admin:latest
+    image: ghcr.io/ticnix/weather-frontend-admin:${IMAGE_TAG:-latest}
     container_name: weather-frontend-admin
     ports:
       - "8081:80"

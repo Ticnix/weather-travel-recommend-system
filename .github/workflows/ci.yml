@@ -219,17 +219,30 @@ jobs:
         run: npm run build
 
   # ══════════════════════════════════════════════════════════════════════
-  # 4. 镜像构建验证
+  # 4. 构建并发布镜像（CI 的最后一关，也是 CD 的开始）
   #
-  # 只在 push 到主干时跑：PR 阶段构建四个镜像太贵（后端镜像 1.3GB），
-  # 而「Dockerfile 是否还能构建」这件事只在准备发布时才是关键。
-  # 前面三个 job 都通过才执行，避免为一个跑不通的提交浪费构建资源。
+  # 触发条件：仅在 push 到主干时。前面三个 job 全过才会执行——
+  # 「测试没过的代码不配被发布」，这条链路用 needs 硬性保证。
+  #
+  # 发布到哪里：GHCR（ghcr.io），GitHub 自家的镜像仓库，
+  # 用 workflow 内置的 GITHUB_TOKEN 即可推送，**不需要配置任何 Secret**。
+  #
+  # 标签策略（可回滚的关键）：
+  #   应用镜像 → latest（始终指向主干最新）+ sha-<短hash>（与提交一一对应）
+  #   回滚时只要用旧提交的 sha-xxx tag 重新执行 deploy.sh 即可。
+  #   postgres 镜像随 PG 版本走（pg17），不随应用版本变化，用固定 tag。
+  #
+  # PR 阶段此 job 不执行：只构建不发布的验证（构建是否可成功）已由
+  # 后端/前端 job 覆盖，省下每次 PR 几分钟的镜像构建开销。
   # ══════════════════════════════════════════════════════════════════════
-  docker-build:
-    name: 镜像构建
+  release:
+    name: 构建并发布镜像
     runs-on: ubuntu-latest
     needs: [backend-lint, backend-test, frontend]
     if: github.event_name == 'push'
+    permissions:
+      contents: read
+      packages: write # 推送镜像到 GHCR 必需
     strategy:
       # 一个镜像失败不影响其他镜像继续构建，便于一次性看到全部问题
       fail-fast: false
@@ -238,26 +251,67 @@ jobs:
           - name: backend
             context: ./backend
             file: ./backend/Dockerfile
+            image: ghcr.io/ticnix/weather-backend
           - name: frontend-user
             context: ./frontend-user
             file: ./frontend-user/Dockerfile
+            image: ghcr.io/ticnix/weather-frontend-user
           - name: frontend-admin
             context: ./frontend-admin
             file: ./frontend-admin/Dockerfile
+            image: ghcr.io/ticnix/weather-frontend-admin
           - name: postgres
             context: .
             file: ./Dockerfile.pg
+            image: ghcr.io/ticnix/weather-pg
+            fixed_tag: pg17
     steps:
       - uses: actions/checkout@v4
 
       - uses: docker/setup-buildx-action@v3
 
-      - name: 构建 ${{ matrix.name }} 镜像
+      - name: 登录 GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # 计算这个镜像该打哪些 tag（见 job 头部注释的标签策略）
+      - name: 计算镜像标签
+        id: tags
+        env:
+          IMAGE: ${{ matrix.image }}
+          SHA: ${{ github.sha }}
+        run: |
+          if [ -n "${{ matrix.fixed_tag }}" ]; then
+            echo "tags=${IMAGE}:${{ matrix.fixed_tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tags=${IMAGE}:latest,${IMAGE}:sha-${SHA:0:7}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: 构建并推送 ${{ matrix.name }} 镜像
         uses: docker/build-push-action@v6
         with:
           context: ${{ matrix.context }}
           file: ${{ matrix.file }}
-          push: false # 只验证能不能构建，推送镜像由 Day 32 的 CD 负责
-          # 用 GitHub 的缓存服务存 Docker 层，下次构建直接复用（首次仍会慢）
+          push: true
+          tags: ${{ steps.tags.outputs.tags }}
+          # 用 GitHub 的缓存服务存 Docker 层，下次构建直接复用
           cache-from: type=gha,scope=${{ matrix.name }}
           cache-to: type=gha,mode=max,scope=${{ matrix.name }}
+
+      # GHCR 的用户级包默认是**私有**的，匿名拉取会 401，
+      # 而部署机（deploy.sh）以匿名方式拉取。用 GITHUB_TOKEN 尝试把它
+      # 改成 public；若 API 不支持此调用则失败不阻断（去包页面手动改一次即可）。
+      - name: 将镜像包设为公开（供部署机匿名拉取）
+        continue-on-error: true
+        run: |
+          PKG_NAME="${{ matrix.image }}"   # ghcr.io/ticnix/weather-backend
+          PKG_NAME="${PKG_NAME##*/}"        # → weather-backend
+          curl -sS -X PATCH \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/user/packages/container/${PKG_NAME}" \
+            -d '{"visibility":"public"}' \
+            -o /dev/null -w "设置 ${PKG_NAME} 可见性: HTTP %{http_code}\n" || true

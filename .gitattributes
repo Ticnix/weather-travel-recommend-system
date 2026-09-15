@@ -1,0 +1,7 @@
+# 行尾统一策略
+#
+# *.sh 必须是 LF：bash 对 CRLF 极其敏感，在 Windows 上以 CRLF 检出的
+# deploy.sh 会在 Git Bash 里报 `$'\r': command not found`，
+# 且报错位置与真实原因无关，非常难排查。
+# 这里强制 .sh 检出时也保持 LF（Git Bash、WSL、CI 均兼容）。
+*.sh text eol=lf

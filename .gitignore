@@ -4,8 +4,13 @@ __pycache__/
 venv/
 .venv/
 .env
+# 各环境配置（.env.prod / .env.dev 等）：敏感值一律不入库，参考 *.example
+.env.*
 *.log
 *.err
+# 部署产物与运行期记录
+backups/
+.last_deployed_tag
 # celery 运行期产生的调度状态文件
 celerybeat-schedule
 celerybeat-schedule-shm
