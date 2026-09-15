@@ -90,11 +90,13 @@ log "启动服务..."
 IMAGE_TAG="$IMAGE_TAG" $COMPOSE up -d || fail "容器启动失败（数据已备份于 $BACKUP_FILE）"
 
 # ---------- 6. 健康检查：三个入口全部可用才算上线成功 ----------
+# 参数 $1：是否强制判定失败（"1"=演练用）。注意只有「新版本」的检查受它影响，
+# 回滚后的检查永远真实探测——否则演练时无法验证"回滚后服务真的恢复了"。
 check_health() {
+  local force_fail="${1:-0}"
   local deadline=$(( $(date +%s) + HEALTHCHECK_TIMEOUT_S ))
   while [ "$(date +%s)" -lt "$deadline" ]; do
-    # FORCE_HEALTHCHECK_FAIL=1：演练回滚流程用，跳过真实探测
-    if [ "${FORCE_HEALTHCHECK_FAIL:-0}" != "1" ] \
+    if [ "$force_fail" != "1" ] \
        && curl -fsS --max-time 5 http://localhost:8000/health >/dev/null 2>&1 \
        && curl -fsS --max-time 5 http://localhost:8080/      >/dev/null 2>&1 \
        && curl -fsS --max-time 5 http://localhost:8081/      >/dev/null 2>&1; then
@@ -106,7 +108,7 @@ check_health() {
 }
 
 log "健康检查（最长 ${HEALTHCHECK_TIMEOUT_S}s）：后端 /health、用户端、管理端..."
-if check_health; then
+if check_health "${FORCE_HEALTHCHECK_FAIL:-0}"; then
   echo "$IMAGE_TAG" > .last_deployed_tag
   log "✅ 部署成功，当前版本: $IMAGE_TAG"
   log "   备份文件: $BACKUP_FILE"
@@ -129,8 +131,8 @@ IMAGE_TAG="$OLD_TAG" $COMPOSE up -d || {
   exit 2
 }
 
-log "回滚完成，再次健康检查..."
-if check_health; then
+log "回滚完成，再次健康检查（真实探测，不受演练开关影响）..."
+if check_health 0; then
   log "✅ 已回滚到 $OLD_TAG，服务恢复。新版本 $IMAGE_TAG 部署失败，排查后可重试。"
   exit 1
 fi

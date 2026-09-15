@@ -86,7 +86,7 @@
 
 ## 四、快速开始
 
-### 方式一：Docker 一键启动（推荐）
+### 方式一：Docker 一键启动（推荐，本地源码构建）
 
 ```bash
 docker compose up -d --build
@@ -100,7 +100,22 @@ docker compose up -d --build
 
 > 首次启动需构建 PostgreSQL 自定义镜像（安装 PostGIS + TimescaleDB），耗时较长。
 
-### 方式二：本地开发
+### 方式二：使用 CI 发布的镜像部署（免构建，支持回滚）
+
+每次 push 到主干，流水线会自动把 4 个镜像发布到 GHCR
+（`latest` + `sha-<提交短hash>` 双标签）。任意装有 Docker 的机器上：
+
+```bash
+./deploy.sh                                # 部署主干最新版
+IMAGE_TAG=sha-4c3abe9 ./deploy.sh          # 部署/回滚到指定提交
+FORCE_HEALTHCHECK_FAIL=1 ./deploy.sh       # 演练回滚流程
+```
+
+脚本自动完成：`pg_dump` 备份（保留 7 份）→ 停应用 → 拉镜像 → 启动 →
+健康检查（后端 `/health` + 用户端 + 管理端）→ **失败自动回滚上一版本**。
+生产环境配置复制 `backend/.env.prod.example` 并以 `ENV_FILE` 指定。
+
+### 方式三：本地开发
 
 **1. 启动依赖服务**
 
