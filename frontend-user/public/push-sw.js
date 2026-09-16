@@ -1,9 +1,11 @@
-﻿// Web Push 的 Service Worker：
-// - push 事件：收到推送后调用系统通知展示
-// - notificationclick：点击通知跳到对应页面（已有窗口则聚焦）
+// Web Push 处理脚本（由 vite-plugin-pwa 生成的 SW 通过 importScripts 注入）。
 //
-// 注意：SW 必须放在 public/（构建时原样拷到 dist 根目录），
-// pushManager.subscribe 的 scope 才能注册到整站。
+// 为什么要拆成独立文件：PWA 需要自己的 Service Worker 做离线缓存（Workbox 生成），
+// 而推送也需要 Service Worker。浏览器对同一 scope 只认**一个** SW，
+// 两者不能各注册一个，否则后注册的会顶掉先注册的（推送或离线缓存必坏一个）。
+// 做法：生成的 SW 里 importScripts('/push-sw.js')，一个 SW 两种职责。
+//
+// 注意：文件名不能叫 sw.js——那是 Workbox 生成物的名字，会被覆盖。
 
 self.addEventListener("push", (event) => {
   let payload = { title: "广州天气旅行助手", body: "你有一条新消息", url: "/" }
@@ -17,8 +19,8 @@ self.addEventListener("push", (event) => {
   event.waitUntil(
     self.registration.showNotification(payload.title, {
       body: payload.body,
-      icon: "/favicon.svg",
-      badge: "/favicon.svg",
+      icon: "/icons/icon-192.png",
+      badge: "/icons/icon-192.png",
       tag: payload.url, // 同 URL 的通知合并，避免轰炸
       data: { url: payload.url },
     }),

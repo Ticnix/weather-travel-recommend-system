@@ -76,7 +76,10 @@ test.describe('注册 / 登录 / 退出', () => {
     // 头部用户名下拉 → 退出登录。
     // 不用 getByRole('banner')：antd v6 的 Header 不能保证是 <header> 语义标签
     await page.getByText(account.username).first().click()
-    await page.getByText('退出登录').click()
+    // 用 role 限定在下拉菜单项上：Profile 页里也有一个「退出登录」按钮，
+    // 直接 getByText 会命中两个元素触发 strict mode violation
+    // 名称用正则：菜单项带了图标，可访问名可能是「logout 退出登录」
+    await page.getByRole('menuitem', { name: /退出登录/ }).click()
 
     // 退出后头部应重新出现「登录」按钮，且本地 token 被清掉
     await expect(page.getByRole('button', { name: /登\s*录/ })).toBeVisible()

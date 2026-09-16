@@ -20,6 +20,8 @@ import {
 } from '../api/auth'
 import AlertStreamListener from '../components/AlertStreamListener'
 import ErrorBoundary from '../components/ErrorBoundary'
+import InstallPrompt from '../components/InstallPrompt'
+import OfflineNotice from '../components/OfflineNotice'
 
 const { Header, Content, Footer } = Layout
 const { Title } = Typography
@@ -131,6 +133,14 @@ export default function MainLayout() {
 
       {/* 天气预警实时通道：全站一个实例，收到预警弹出提醒 */}
       <AlertStreamListener />
+
+      {/* 离线提示 + 安装引导（与内容区同宽对齐） */}
+      <div style={{ maxWidth: 1100, width: '100%', margin: '0 auto', padding: '12px 24px 0' }}>
+        <Space direction="vertical" size={12} style={{ width: '100%' }}>
+          <OfflineNotice />
+          <InstallPrompt />
+        </Space>
+      </div>
 
       <Content style={{ padding: '28px 24px', maxWidth: 1100, width: '100%', margin: '0 auto' }}>
         {/* 页面级错误边界：单个页面崩溃时只替换内容区，导航仍然可用 */}
