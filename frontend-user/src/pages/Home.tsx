@@ -58,6 +58,9 @@ export default function Home() {
   const tips = dash?.tips ?? []
   const outfit = dash?.outfit ?? null
   const upcoming = dash?.itinerary?.upcoming ?? []
+  const indices = dash?.indices ?? []
+  // 默认只展示最相关的 4 个指数，避免 16 项铺满首页
+  const [showAllIndices, setShowAllIndices] = useState(false)
 
   return (
     <Space direction="vertical" size={20} style={{ width: '100%' }}>
@@ -130,6 +133,75 @@ export default function Home() {
           <Text style={{ color: 'var(--jp-ink-2)', fontSize: 13 }}>暂无穿搭建议</Text>
         )}
       </div>
+
+      {/* ===== 生活指数（后端已按体质偏好与近期行程排序） ===== */}
+      {indices.length > 0 ? (
+        <div className="jp-card" style={{ padding: 20 }}>
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginBottom: 12,
+            }}
+          >
+            <span
+              className="jp-serif"
+              style={{ fontSize: 16, fontWeight: 600, color: 'var(--jp-ink)' }}
+            >
+              🌿 生活指数
+            </span>
+            <Button type="link" size="small" onClick={() => setShowAllIndices((v) => !v)}>
+              {showAllIndices ? '收起' : `全部 ${indices.length} 项`} <RightOutlined />
+            </Button>
+          </div>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
+              gap: 12,
+            }}
+          >
+            {(showAllIndices ? indices : indices.slice(0, 4)).map((item) => (
+              <div
+                key={item.type_code}
+                style={{
+                  background: '#faf7f2',
+                  border: '1px solid #f0e9df',
+                  borderRadius: 10,
+                  padding: '12px 14px',
+                }}
+              >
+                <div style={{ fontSize: 12, color: 'var(--jp-ink-3)' }}>{item.name}</div>
+                <div
+                  className="jp-serif"
+                  style={{
+                    fontSize: 18,
+                    fontWeight: 600,
+                    color: 'var(--jp-ink)',
+                    margin: '2px 0 6px',
+                  }}
+                >
+                  {item.category}
+                </div>
+                <div
+                  style={{
+                    fontSize: 12,
+                    color: 'var(--jp-ink-2)',
+                    lineHeight: 1.6,
+                    display: '-webkit-box',
+                    WebkitLineClamp: showAllIndices ? 6 : 3,
+                    WebkitBoxOrient: 'vertical',
+                    overflow: 'hidden',
+                  }}
+                >
+                  {item.text}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
 
       {/* ===== 近期行程（含逐条天气提醒） ===== */}
       <div className="jp-card" style={{ padding: 20 }}>

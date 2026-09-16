@@ -104,7 +104,24 @@ async def update_user(
     user = await db.get(User, user_id)
     if user is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="用户不存在")
-    for field, value in payload.model_dump(exclude_unset=True).items():
+
+    is_admin = current.role == "admin"
+    if user.id != current.id and not is_admin:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="无权修改其他用户资料")
+
+    fields = payload.model_dump(exclude_unset=True)
+    if not is_admin:
+        # 普通用户只能改自己的资料字段。role / is_active 属于管理权限——
+        # 若不加限制，任何登录用户都能把自己改成 admin（提权漏洞）。
+        allowed = {"nickname", "email", "avatar", "body_preference"}
+        illegal = sorted(set(fields) - allowed)
+        if illegal:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"无权修改字段：{'、'.join(illegal)}",
+            )
+
+    for field, value in fields.items():
         setattr(user, field, value)
     await db.commit()
     await db.refresh(user)

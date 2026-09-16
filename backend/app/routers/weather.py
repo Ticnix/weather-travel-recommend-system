@@ -9,9 +9,10 @@ from app.core.cache import cached
 from app.core.deps import CurrentUser
 from app.core.response import success
 from app.db.session import get_db
+from app.models.user import User
 from app.models.weather import WeatherHistory
 from app.schemas.weather import SyncResult, WeatherHistoryOut
-from app.services import weather_sync
+from app.services import index_service, weather_sync
 
 router = APIRouter(prefix="/api/v1/weather", tags=["气象数据"])
 
@@ -147,6 +148,63 @@ async def alerts(current: CurrentUser) -> dict:
             "total": len(bundle.alerts),
         }
     )
+
+
+async def _user_for(db: AsyncSession, user_id: int) -> User | None:
+    return await db.get(User, user_id)
+
+
+@router.get("/indices", response_model=dict)
+async def indices(
+    current: CurrentUser,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    location: str = "广州",
+    size: int = index_service.SUMMARY_SIZE,
+) -> dict:
+    """今日生活指数摘要（鉴权）。
+
+    按**用户体质偏好 + 近期行程**排序后取前 N 条——
+    同一批指数，怕冷的人先看到穿衣与感冒，有爬山行程的人先看到运动与紫外线。
+    """
+    user = await _user_for(db, current.id)
+    items = await index_service.get_summary(db, location, user, size)
+    return success(
+        {
+            "items": items,
+            "total": len(items),
+            "city": location,
+            "body_preference": (user.body_preference if user else "normal"),
+        }
+    )
+
+
+@router.get("/indices/all", response_model=dict)
+async def indices_all(
+    current: CurrentUser,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    location: str = "广州",
+) -> dict:
+    """今日全部生活指数（不截断，供「查看全部」展开）。"""
+    user = await _user_for(db, current.id)
+    records = await index_service.get_indices(db, location)
+    items = index_service.rank_indices(
+        records,
+        (user.body_preference if user else "normal"),
+        await index_service.recent_activities(db, current.id),
+    )
+    return success({"items": items, "total": len(items), "city": location})
+
+
+@router.get("/indices/history", response_model=dict)
+async def indices_history(
+    current: CurrentUser,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    type_code: str = "5",
+    location: str = "广州",
+    days: int = index_service.HISTORY_DAYS,
+) -> dict:
+    """某类指数的历史走势（如「这几天紫外线在变强吗」）。"""
+    return success(await index_service.get_history(db, location, type_code, days))
 
 
 @router.get("/stats", response_model=dict)

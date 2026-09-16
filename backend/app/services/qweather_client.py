@@ -173,6 +173,27 @@ class WeatherAlert:
 
 
 @dataclass
+class LifeIndex:
+    """一条生活指数（和风 /indices/1d）。
+
+    和风的指数编码（type）：
+    1=运动 2=洗车 3=穿衣 4=钓鱼 5=紫外线 6=旅游 7=花粉过敏 8=舒适度
+    9=感冒 10=空调 11=空气污染扩散 12=太阳镜 13=化妆 14=晾晒 15=交通 16=防晒
+
+    ⚠️ level 的含义**随指数类型而变**，不能跨类型比较：
+    穿衣指数的 level=7 是「炎热」，而紫外线 level=1 是「最弱」。
+    要判断"优/劣"只能看 category 文案或按类型单独解释。
+    """
+
+    date: str  # YYYY-MM-DD
+    type_code: str  # "3"
+    name: str  # 穿衣指数
+    level: str
+    category: str  # 炎热 / 适宜 / 较不宜
+    text: str
+
+
+@dataclass
 class WeatherBundle:
     current: CurrentWeather
     daily: list[DailyForecast]
@@ -217,11 +238,16 @@ class QWeatherClient:
         # 未命中字典时退化：传入经纬度"lon,lat"和风也支持
         return location
 
-    async def _get(self, path: str, location: str) -> dict[str, Any]:
-        """通用 GET 请求，自动加 key/单位参数。"""
+    async def _get(self, path: str, location: str, **extra: str) -> dict[str, Any]:
+        """通用 GET 请求，自动加 key/单位参数；extra 用于接口特有参数（如 indices 的 type）。"""
         if not self.api_key:
             raise RuntimeError("QWEATHER_API_KEY 未配置，请在 .env 设置")
-        params = {"location": self._resolve_location(location), "key": self.api_key, "lang": "zh"}
+        params = {
+            "location": self._resolve_location(location),
+            "key": self.api_key,
+            "lang": "zh",
+            **extra,
+        }
         url = f"{self.base_url}{path}"
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             resp = await client.get(url, params=params)
@@ -257,6 +283,30 @@ class QWeatherClient:
         current = self._parse_current(now_data)
         daily = self._parse_daily(daily_data)
         return WeatherBundle(current=current, daily=daily, alerts=alerts, location_code=loc)
+
+    async def fetch_indices(
+        self, location: str | None = None, type_code: str = "0"
+    ) -> list[LifeIndex]:
+        """拉取生活指数。type_code="0" 表示一次取回全部类型。
+
+        实测：该接口在免费 Key 上**可用**（与需要付费订阅的 /warning/now 不同），
+        所以生活指数是性价比很高的一项能力。
+        """
+        loc = location or settings.QWEATHER_DEFAULT_LOCATION
+        data = await self._get("/indices/1d", loc, type=type_code)
+        indices: list[LifeIndex] = []
+        for item in data.get("daily", []):
+            indices.append(
+                LifeIndex(
+                    date=str(item.get("date", "")),
+                    type_code=str(item.get("type", "")),
+                    name=item.get("name", ""),
+                    level=str(item.get("level", "")),
+                    category=item.get("category", ""),
+                    text=item.get("text", ""),
+                )
+            )
+        return indices
 
     @staticmethod
     def _parse_current(n: dict[str, Any]) -> CurrentWeather:

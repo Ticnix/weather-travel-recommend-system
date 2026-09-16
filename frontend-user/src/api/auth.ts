@@ -8,6 +8,8 @@ export interface AuthUser {
   role: string
   avatar?: string | null
   is_active: boolean
+  /** 体质偏好：normal / cold（怕冷）/ heat（怕热），用于生活指数个性化排序 */
+  body_preference?: string
   created_at: string
   updated_at: string
 }

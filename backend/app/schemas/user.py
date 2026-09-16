@@ -1,6 +1,7 @@
 """用户相关 Pydantic Schema。"""
 
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -22,6 +23,8 @@ class UserUpdate(BaseModel):
     avatar: str | None = None
     role: str | None = None
     is_active: bool | None = None
+    # 体质偏好（Day 37）：normal / cold / heat，用于生活指数个性化排序
+    body_preference: Literal["normal", "cold", "heat"] | None = None
 
 
 class UserOut(UserBase):
@@ -30,6 +33,7 @@ class UserOut(UserBase):
     id: int
     avatar: str | None = None
     is_active: bool = True
+    body_preference: str = "normal"
     created_at: datetime
     updated_at: datetime
 

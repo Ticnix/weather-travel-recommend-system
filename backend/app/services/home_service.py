@@ -17,7 +17,7 @@ import logging
 from datetime import date, timedelta
 from typing import Any
 
-from app.services import itinerary_service
+from app.services import index_service, itinerary_service
 from app.services.city_dict import lookup_city
 from app.services.weather_service import fetch_weather
 from skills.outfit_recommend.scripts import outfit_engine
@@ -164,15 +164,20 @@ async def build_dashboard(
     today = date.today()
     end = today + timedelta(days=LOOKAHEAD_DAYS)
 
-    # 1) 天气 + 穿搭建议并行获取
+    # 1) 天气 + 穿搭建议 + 生活指数并行获取
     weather_task = _safe_weather(target_city)
     outfit_task = outfit_engine.outfit_structured(target_city)
-    bundle, outfit = await asyncio.gather(weather_task, outfit_task, return_exceptions=True)
+    index_task = index_service.summary_for_home(user_id, target_city)
+    bundle, outfit, index_brief = await asyncio.gather(
+        weather_task, outfit_task, index_task, return_exceptions=True
+    )
 
     if isinstance(bundle, BaseException):
         bundle = None
     if isinstance(outfit, BaseException):
         outfit = None
+    if isinstance(index_brief, BaseException):
+        index_brief = []
 
     weather: dict[str, Any] = {}
     tips: list[dict[str, Any]] = []
@@ -259,6 +264,8 @@ async def build_dashboard(
         "weather": weather,
         "tips": tips,
         "outfit": outfit_brief,
+        # 生活指数：已按该用户的体质偏好与近期行程排序
+        "indices": index_brief or [],
         "itinerary": {"upcoming": upcoming, "total": len(upcoming)},
         "logged_in": user_id is not None,
     }

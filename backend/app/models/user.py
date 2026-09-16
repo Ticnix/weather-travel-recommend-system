@@ -19,6 +19,9 @@ class User(Base, TimestampMixin):
     avatar: Mapped[str | None] = mapped_column(String(255), nullable=True)
     role: Mapped[str] = mapped_column(String(16), default="user", nullable=False)  # user / admin
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    # 体质偏好（Day 37）：normal / cold（怕冷）/ heat（怕热）
+    # 用于生活指数的个性化排序——怕冷的人先看穿衣指数与感冒指数
+    body_preference: Mapped[str] = mapped_column(String(16), default="normal", nullable=False)
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     def __repr__(self) -> str:

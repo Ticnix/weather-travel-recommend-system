@@ -32,6 +32,7 @@ import {
   isLoggedIn,
   type AuthUser,
 } from '../api/auth'
+import BodyPreferenceSetting from '../components/BodyPreferenceSetting'
 import NotificationSettings from '../components/NotificationSettings'
 
 const { Title, Paragraph, Text } = Typography
@@ -139,6 +140,13 @@ export default function Profile() {
           </Col>
         </Row>
       </div>
+
+      {/* 体质偏好（仅登录可见）：影响生活指数的排序 */}
+      {loggedIn && (
+        <div className="jp-card" style={{ padding: 24 }}>
+          <BodyPreferenceSetting />
+        </div>
+      )}
 
       {/* 我的反馈（仅登录可见） */}
       {loggedIn && (

@@ -37,12 +37,23 @@ export interface HomeItineraryItem {
   weather_hint: string
 }
 
+export interface HomeIndex {
+  date: string
+  type_code: string
+  name: string
+  level: string
+  category: string
+  text: string | null
+}
+
 export interface HomeDashboard {
   city: string
   date: string
   weather: HomeWeather
   tips: HomeTip[]
   outfit: HomeOutfit | null
+  /** 生活指数：后端已按体质偏好与近期行程排序，越靠前越相关 */
+  indices: HomeIndex[]
   itinerary: { upcoming: HomeItineraryItem[]; total: number }
   logged_in: boolean
 }

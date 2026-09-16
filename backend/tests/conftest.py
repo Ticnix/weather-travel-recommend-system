@@ -73,14 +73,27 @@ async def _ensure_database() -> None:
 
 
 async def _prepare_schema() -> None:
-    """建扩展 + 建表。
+    """建扩展 + **重建**表。
 
     测试库**不建 TimescaleDB 超表**：超表是时序优化手段，
     对验证 CRUD 与业务逻辑没有影响，省去这一步能让测试启动更快、依赖更少。
+
+    ⚠️ 每次会话先 drop 再 create，而不是只 `create_all`：
+    `create_all` 只会创建"缺失的表"，**不会给已存在的表补新增的列**。
+    一旦模型加了字段（如 Day 37 的 `users.body_preference`），
+    本地遗留的测试库就会报 `UndefinedColumn`——现象很迷惑：
+    代码没错、开发库迁移也跑了，就是测试库"老了"。
+    测试库本就是一次性的，重建比兼容旧结构省心得多。
+
+    护栏：库名必须以 `_test` 结尾才允许重建，避免误伤真实库。
     """
+    if not TEST_DB_NAME.endswith("_test"):
+        raise RuntimeError(f"拒绝对非测试库执行重建：{TEST_DB_NAME}")
+
     async with _engine.begin() as conn:
         await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
         await conn.execute(text("CREATE EXTENSION IF NOT EXISTS postgis"))
+        await conn.run_sync(Base.metadata.drop_all)
         await conn.run_sync(Base.metadata.create_all)
 
 
