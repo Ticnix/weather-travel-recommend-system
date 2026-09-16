@@ -10,6 +10,7 @@ from app.models.trip_note import TripNote
 from app.models.user import User
 from app.models.user_knowledge import UserKnowledge
 from app.models.weather import WeatherHistory
+from app.models.weather_alert import WeatherAlert
 
 __all__ = [
     "ChatMessage",
@@ -25,5 +26,6 @@ __all__ = [
     "TripNote",
     "User",
     "UserKnowledge",
+    "WeatherAlert",
     "WeatherHistory",
 ]

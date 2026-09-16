@@ -13,6 +13,7 @@
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 from app.core.config import settings
 from app.services.city_dict import lookup_city
@@ -52,6 +53,32 @@ async def _open_meteo_fetch(city: str | None) -> WeatherBundle:
             lat, lon = info.lat, info.lon
             loc_code = info.name
     return await _open_meteo.fetch(latitude=lat, longitude=lon, location_code=loc_code)
+
+
+async def fetch_alerts_with_fallback(city: str) -> list[Any]:
+    """取某城市当前预警；主数据源没有预警时，用免费源兜底一次。
+
+    为什么需要兜底：和风的 `/warning/now` 属于**付费能力**，免费 Key 调用会
+    返回 403（实测），于是「配置为 qweather」时预警列表恒为空——
+    预警推送功能等于从未启用。这里在主源没给出预警时，改用 Open-Meteo 的
+    阈值规则（降水量/风速）补一次判断，保证功能在默认配置下就能跑起来。
+
+    注意：阈值预警是「简易预警」而非官方预警，只作为兜底；
+    等和风预警接口可用时，主源结果优先。
+    """
+    bundle = await fetch_weather(city)
+    if bundle.alerts:
+        return list(bundle.alerts)
+
+    if settings.WEATHER_PROVIDER.lower() == "open_meteo":
+        return []  # 主源就是免费源，没有就是真的没有
+
+    try:
+        fallback = await _open_meteo_fetch(city)
+    except Exception as exc:  # noqa: BLE001 兜底失败就当作无预警，不影响主流程
+        logger.warning("预警兜底源调用失败 %s: %s", city, exc)
+        return []
+    return list(fallback.alerts)
 
 
 def weather_to_text(bundle: WeatherBundle) -> str:

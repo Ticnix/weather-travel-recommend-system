@@ -18,6 +18,7 @@ import {
   isLoggedIn,
   type AuthUser,
 } from '../api/auth'
+import AlertStreamListener from '../components/AlertStreamListener'
 import ErrorBoundary from '../components/ErrorBoundary'
 
 const { Header, Content, Footer } = Layout
@@ -127,6 +128,9 @@ export default function MainLayout() {
           )}
         </Space>
       </Header>
+
+      {/* 天气预警实时通道：全站一个实例，收到预警弹出提醒 */}
+      <AlertStreamListener />
 
       <Content style={{ padding: '28px 24px', maxWidth: 1100, width: '100%', margin: '0 auto' }}>
         {/* 页面级错误边界：单个页面崩溃时只替换内容区，导航仍然可用 */}

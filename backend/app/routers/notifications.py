@@ -1,9 +1,14 @@
 """通知接口：订阅管理、发送记录、测试推送（均需登录）。"""
 
+import json
+from collections.abc import AsyncIterator
+
 from fastapi import APIRouter, Depends
+from fastapi.responses import StreamingResponse
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core import event_bus
 from app.core.config import settings
 from app.core.deps import CurrentUser
 from app.core.response import success
@@ -158,6 +163,35 @@ async def update_morning_report(
         db.add(pref)
     await db.commit()
     return success(data={"enabled": payload.enabled, "hour": payload.hour})
+
+
+@router.get("/stream")
+async def stream_alerts(current: CurrentUser) -> StreamingResponse:
+    """预警实时通道（SSE）。
+
+    鉴权说明：浏览器原生 EventSource 无法自定义请求头，因此前端不用它，
+    而是用 fetch + ReadableStream 读取本响应（可正常携带 Authorization），
+    代价是要自己处理重连与按行解析。
+
+    代理说明：响应头带 `X-Accel-Buffering: no`，避免 Nginx 把 SSE 缓冲成
+    一次性输出（那样就完全失去实时性了）。
+    """
+
+    async def event_source() -> AsyncIterator[str]:
+        # 先回一个注释行：让前端立刻知道连接已建立（而不是等第一条业务消息）
+        yield f": connected user={current.id}\n\n"
+        async for event in event_bus.subscribe(event_bus.ALERT_CHANNEL):
+            yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+
+    return StreamingResponse(
+        event_source(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @router.post("/test", response_model=dict)

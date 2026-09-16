@@ -147,3 +147,46 @@ class TestMorningReportPrefs:
                 "/api/v1/notifications/morning-report", json={"enabled": True, "hour": 7}
             )
         ).status_code == 401
+
+
+class TestAlertStream:
+    """预警实时通道（SSE over fetch）。"""
+
+    async def test_未登录不能建立实时通道(self, client):
+        resp = await client.get("/api/v1/notifications/stream")
+        assert resp.status_code == 401
+
+    async def test_通道按SSE格式下发预警事件(self, client, auth_headers, monkeypatch):
+        async def fake_subscribe(channel):
+            yield {
+                "event": "weather_alert",
+                "id": 7,
+                "city": "广州",
+                "level": "danger",
+                "alert_type": "rain",
+                "title": "暴雨红色预警",
+                "detail": "3 小时内降雨量将达 100 毫米以上",
+                "at": "2026-09-16T08:00:00+00:00",
+            }
+
+        # 订阅源来自 Redis，测试里替换掉（不需要真起 Pub/Sub）
+        monkeypatch.setattr("app.core.event_bus.subscribe", fake_subscribe)
+
+        async with client.stream(
+            "GET", "/api/v1/notifications/stream", headers=auth_headers
+        ) as resp:
+            assert resp.status_code == 200
+            assert resp.headers["content-type"].startswith("text/event-stream")
+            # 必须禁止代理缓冲，否则 Nginx 会把 SSE 攒成一次性输出
+            assert resp.headers["x-accel-buffering"] == "no"
+
+            lines: list[str] = []
+            async for line in resp.aiter_lines():
+                lines.append(line)
+                if len(lines) >= 4:
+                    break
+
+        body = "\n".join(lines)
+        assert "connected" in body  # 连接建立后立刻回注释行
+        assert "data:" in body  # 事件以 SSE 的 data 行下发
+        assert "暴雨红色预警" in body

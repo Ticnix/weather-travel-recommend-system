@@ -21,6 +21,7 @@ celery_app = Celery(
         "app.tasks.rag_tasks",
         "app.tasks.news_tasks",
         "app.tasks.report_tasks",
+        "app.tasks.alert_tasks",
     ],
 )
 
@@ -49,6 +50,13 @@ celery_app.conf.update(
         "dispatch-morning-reports": {
             "task": "app.tasks.report_tasks.dispatch_morning_reports",
             "schedule": crontab(minute="0"),
+        },
+        # 每 10 分钟轮询天气预警：识别新发布的预警并推送给受影响用户。
+        # 10 分钟是「及时性」与「对上游接口的压力」之间的折中——
+        # 预警以小时为尺度演进，无需更频繁。
+        "poll-weather-alerts": {
+            "task": "app.tasks.alert_tasks.poll_weather_alerts",
+            "schedule": crontab(minute="*/10"),
         },
     },
 )
