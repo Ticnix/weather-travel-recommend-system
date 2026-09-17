@@ -41,6 +41,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
 from app import models  # noqa: F401  # 注册所有模型到 Base.metadata
+from app.db.analytics import DAILY_AGGREGATE_SELECT
 from app.db.base import Base
 from app.main import app
 
@@ -77,6 +78,7 @@ async def _prepare_schema() -> None:
 
     测试库**不建 TimescaleDB 超表**：超表是时序优化手段，
     对验证 CRUD 与业务逻辑没有影响，省去这一步能让测试启动更快、依赖更少。
+    但时序聚合视图要建（见下），否则依赖它的分析逻辑没法测。
 
     ⚠️ 每次会话先 drop 再 create，而不是只 `create_all`：
     `create_all` 只会创建"缺失的表"，**不会给已存在的表补新增的列**。
@@ -93,8 +95,23 @@ async def _prepare_schema() -> None:
     async with _engine.begin() as conn:
         await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
         await conn.execute(text("CREATE EXTENSION IF NOT EXISTS postgis"))
+        # timescaledb 只用来拿到 time_bucket 等函数（不建超表）：
+        # 聚合视图的 SQL 与线上连续聚合共用一份，缺了它会报
+        # `function time_bucket(...) does not exist`——那测试就测了另一套 SQL
+        await conn.execute(text("CREATE EXTENSION IF NOT EXISTS timescaledb"))
+        # 先删聚合视图：它依赖 weather_history，留着会让 drop_all 报
+        # `cannot drop table weather_history because other objects depend on it`
+        await conn.execute(text("DROP VIEW IF EXISTS weather_daily CASCADE"))
         await conn.run_sync(Base.metadata.drop_all)
         await conn.run_sync(Base.metadata.create_all)
+        # 不建超表，但要建**同名普通视图**（Day 42）：
+        # 线上是连续聚合 weather_daily，测试库用普通视图顶上，
+        # 两边引用同一段聚合 SQL（app/db/analytics.py），
+        # 这样"测试通过的聚合逻辑"与"线上跑的"是同一份，
+        # 而不是"测试测了另一套 SQL"。
+        await conn.execute(
+            text(f"CREATE OR REPLACE VIEW weather_daily AS {DAILY_AGGREGATE_SELECT}")
+        )
 
 
 def pytest_sessionstart(session) -> None:

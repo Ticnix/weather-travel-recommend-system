@@ -100,6 +100,9 @@ class Settings(BaseSettings):
 
     # 气象数据源（Open-Meteo，免费免 Key）
     WEATHER_API_BASE: str = "https://api.open-meteo.com/v1"
+    # 历史归档接口（Day 42）：forecast 接口的 past_days 最多 92 天，
+    # 拿不到去年同期数据，而同比分析必须有同期；archive 接口可回溯数十年
+    WEATHER_ARCHIVE_BASE: str = "https://archive-api.open-meteo.com/v1"
     # 默认城市：广州 23.13°N, 113.26°E
     DEFAULT_CITY_CODE: str = "gz"
     DEFAULT_LATITUDE: float = 23.13

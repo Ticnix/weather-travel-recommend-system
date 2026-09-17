@@ -2,7 +2,7 @@
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.cache import cached
@@ -12,7 +12,7 @@ from app.db.session import get_db
 from app.models.user import User
 from app.models.weather import WeatherHistory
 from app.schemas.weather import SyncResult, WeatherHistoryOut
-from app.services import index_service, weather_sync
+from app.services import index_service, weather_analysis, weather_sync
 
 router = APIRouter(prefix="/api/v1/weather", tags=["气象数据"])
 
@@ -152,6 +152,87 @@ async def alerts(current: CurrentUser) -> dict:
 
 async def _user_for(db: AsyncSession, user_id: int) -> User | None:
     return await db.get(User, user_id)
+
+
+@router.post("/sync-archive", response_model=dict)
+async def sync_archive(
+    current: CurrentUser,
+    start: str = Query(..., description="起始日期 YYYY-MM-DD"),
+    end: str = Query(..., description="结束日期 YYYY-MM-DD"),
+    location: str = Query("gz", description="城市代码"),
+) -> dict:
+    """回补历史日统计（Open-Meteo 归档接口，鉴权）。
+
+    用途：同比分析需要**去年同期**的数据，而实时接口只能回溯 92 天，
+    必须用归档接口把过去的数据补进来。
+    """
+    from datetime import date as _date
+
+    try:
+        start_date = _date.fromisoformat(start)
+        end_date = _date.fromisoformat(end)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=f"日期格式应为 YYYY-MM-DD：{exc}") from exc
+    if end_date < start_date:
+        raise HTTPException(status_code=422, detail="结束日期不能早于起始日期")
+
+    result = await weather_sync.backfill_archive(start_date, end_date, location_code=location)
+    # 回补后立即刷新连续聚合，否则新数据要等下一个整点才出现在统计里
+    refreshed = await weather_analysis.refresh_daily_aggregate(since=start_date)
+    return success({**result, "aggregate_refreshed": refreshed}, message="历史数据回补完成")
+
+
+@router.get("/analysis/daily", response_model=dict)
+async def analysis_daily(
+    current: CurrentUser,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    location: str = "gz",
+    days: int = Query(90, ge=1, le=730),
+) -> dict:
+    """日粒度趋势序列（读连续聚合 weather_daily）。"""
+    items = await weather_analysis.daily_series(db, location, days=days)
+    return success({"items": items, "total": len(items), "location_code": location, "days": days})
+
+
+@router.get("/analysis/compare", response_model=dict)
+async def analysis_compare(
+    current: CurrentUser,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    kind: str = Query("yoy", pattern="^(yoy|mom)$", description="yoy=同比 / mom=环比"),
+    year: int | None = Query(None, ge=2000, le=2100),
+    month: int | None = Query(None, ge=1, le=12),
+    location: str = "gz",
+) -> dict:
+    """月度同比 / 环比（如「今年 9 月比去年同期 +1.2°C」）。
+
+    任一侧没有数据时返回 `available=false` 与原因——
+    不拿 0 充数，否则会算出"降水比去年少 100%"这种看起来很真的假结论。
+    """
+    return success(
+        await weather_analysis.compare_month(db, location, kind=kind, year=year, month=month)
+    )
+
+
+@router.post("/analysis/refresh", response_model=dict)
+async def analysis_refresh(
+    current: CurrentUser,
+    since: str | None = Query(None, description="起始日期，缺省为全部"),
+) -> dict:
+    """手动刷新连续聚合（鉴权）。
+
+    自动刷新策略每小时跑一次，这里提供手动入口：
+    回补历史数据或排查数据不一致时不必等下一个整点。
+    """
+    from datetime import date as _date
+
+    since_date = None
+    if since:
+        try:
+            since_date = _date.fromisoformat(since)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=f"日期格式应为 YYYY-MM-DD：{exc}") from exc
+    ok = await weather_analysis.refresh_daily_aggregate(since=since_date)
+    return success({"refreshed": ok}, message="聚合已刷新" if ok else "刷新失败，请查看日志")
 
 
 @router.get("/indices", response_model=dict)

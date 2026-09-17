@@ -9,7 +9,7 @@
 """
 
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import Any
 
 import httpx
@@ -109,9 +109,58 @@ class WeatherBundle:
 class WeatherClient:
     """Open-Meteo 客户端。"""
 
-    def __init__(self, base_url: str | None = None, timeout: float = 15.0) -> None:
+    def __init__(
+        self,
+        base_url: str | None = None,
+        timeout: float = 15.0,
+        archive_base: str | None = None,
+    ) -> None:
         self.base_url = base_url or settings.WEATHER_API_BASE
+        self.archive_base = archive_base or settings.WEATHER_ARCHIVE_BASE
         self.timeout = timeout
+
+    async def fetch_archive(
+        self,
+        start: date,
+        end: date,
+        latitude: float | None = None,
+        longitude: float | None = None,
+    ) -> list[DailyForecast]:
+        """拉取历史日统计（Open-Meteo Archive API）。
+
+        **为什么单独需要它**：forecast 接口的 `past_days` 上限 92 天，
+        而同比分析（今年 9 月 vs 去年 9 月）需要一年前的数据。
+        archive 接口免费无 Key、可回溯数十年，正好补这个洞。
+
+        返回的 DailyForecast 里 `is_forecast` 会是 False（都是过去日期），
+        与存量数据语义一致，可直接走同一套入库逻辑。
+        """
+        import datetime as _dt
+
+        lat = latitude if latitude is not None else settings.DEFAULT_LATITUDE
+        lon = longitude if longitude is not None else settings.DEFAULT_LONGITUDE
+        params = {
+            "latitude": lat,
+            "longitude": lon,
+            "start_date": start.isoformat(),
+            "end_date": end.isoformat(),
+            "daily": (
+                "weather_code,temperature_2m_max,temperature_2m_min,"
+                "precipitation_sum,wind_speed_10m_max"
+            ),
+            "timezone": "Asia/Shanghai",
+        }
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            resp = await client.get(f"{self.archive_base}/archive", params=params)
+            resp.raise_for_status()
+            data = resp.json()
+
+        daily = self._parse_daily(data.get("daily", {}))
+        # archive 里可能出现今天之后（极少），统一按历史处理
+        today = _dt.date.today().isoformat()
+        for item in daily:
+            item.is_forecast = item.date > today
+        return daily
 
     async def fetch(
         self,
@@ -178,18 +227,19 @@ class WeatherClient:
 
     @staticmethod
     def _parse_daily(d: dict[str, Any]) -> list[DailyForecast]:
-        from datetime import date as _date
-
         dates = d.get("time", [])
         out: list[DailyForecast] = []
-        today_str = _date.today().isoformat()
-        for i, date in enumerate(dates):
+        today_str = date.today().isoformat()
+        # 循环变量刻意叫 day_str 而不是 date：后者会遮蔽模块里
+        # `from datetime import date` 的导入（ruff F402），
+        # 也让"这里是字符串还是日期对象"更明确
+        for i, day_str in enumerate(dates):
             wmo = _idx(d.get("weather_code"), i)
             # 日期 <= 今天 视为「实测/历史」，> 今天 视为「预报」
-            is_forecast = date > today_str
+            is_forecast = day_str > today_str
             out.append(
                 DailyForecast(
-                    date=date,
+                    date=day_str,
                     temp_max=_idx(d.get("temperature_2m_max"), i),
                     temp_min=_idx(d.get("temperature_2m_min"), i),
                     precipitation_sum=_idx(d.get("precipitation_sum"), i),
