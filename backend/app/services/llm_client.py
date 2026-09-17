@@ -15,14 +15,19 @@
 - get_llm():            返回当前默认提供商（settings.LLM_PROVIDER）的实例
 - get_llm(provider):    返回指定提供商的实例（多实例缓存，互不影响）
 - ainvoke():            异步单轮对话，返回模型文本输出
+- ainvoke_json():       异步单轮对话，返回**结构化对象**（Pydantic 模型）
 """
 
 from __future__ import annotations
 
+import json
 import logging
+import re
 from typing import Any
 
+from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
+from pydantic import BaseModel
 
 from app.core.config import settings
 
@@ -102,3 +107,69 @@ async def ainvoke(prompt: str, system: str | None = None, provider: str | None =
 
     resp = await llm.ainvoke(messages)
     return resp.content if isinstance(resp.content, str) else str(resp.content)
+
+
+def extract_json(text: str) -> Any:
+    """从模型输出里提取 JSON 对象。
+
+    模型常见的三种「不听话」：包了 ```json 围栏、前后加了说明文字、
+    只给对象但外面裹着解释。前两种在这里处理掉——
+    **不要因为模型多写了一句"好的，以下是行程："就让整个功能失败**。
+    """
+    if not text or not text.strip():
+        raise ValueError("模型未返回内容")
+
+    raw = text.strip()
+    fence = re.search(r"```(?:json)?\s*(.+?)```", raw, re.S)
+    if fence:
+        raw = fence.group(1).strip()
+
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        pass
+
+    # 退而求其次：截取第一个 { 到最后一个 } 之间的内容
+    start, end = raw.find("{"), raw.rfind("}")
+    if start != -1 and end > start:
+        return json.loads(raw[start : end + 1])
+    raise ValueError("模型输出中未找到 JSON")
+
+
+def _build_messages(prompt: str, system: str | None) -> list:
+    messages: list = []
+    if system:
+        messages.append(SystemMessage(content=system))
+    messages.append(HumanMessage(content=prompt))
+    return messages
+
+
+async def ainvoke_json(
+    prompt: str,
+    schema: type[BaseModel],
+    system: str | None = None,
+    provider: str | None = None,
+) -> BaseModel:
+    """让模型输出**结构化对象**，而不是自由文本。
+
+    为什么需要它：解析自由文本很脆——模型换个措辞、多写一句解释、
+    代码围栏没闭合，`json.loads` 就炸，而这些都不是业务错误。
+    `with_structured_output` 走厂商的 function calling / json_schema，
+    由模型侧保证结构，可靠得多。
+
+    兜底：并非所有 OpenAI 兼容实现都支持结构化输出，
+    此时退化为「明确要求只输出 JSON + 从文本里提取」，
+    保证功能不因厂商能力差异而不可用（代价是可靠性略降）。
+    """
+    llm = get_llm(provider)
+    try:
+        structured = llm.with_structured_output(schema)
+        result = await structured.ainvoke(_build_messages(prompt, system))
+        if isinstance(result, schema):
+            return result
+        return schema.model_validate(result)  # 少数实现返回 dict
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("结构化输出不可用，回退到文本 + JSON 提取: %s", exc)
+
+    text = await ainvoke(prompt, system, provider)
+    return schema.model_validate(extract_json(text))

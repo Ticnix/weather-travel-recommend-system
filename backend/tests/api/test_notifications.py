@@ -224,9 +224,9 @@ class TestPrefs:
             json={"morning_enabled": False, "morning_hour": 8},
             headers=auth_headers,
         )
-        data = (
-            await client.get("/api/v1/notifications/prefs", headers=auth_headers)
-        ).json()["data"]
+        data = (await client.get("/api/v1/notifications/prefs", headers=auth_headers)).json()[
+            "data"
+        ]
         assert data["morning_enabled"] is False
         assert data["morning_hour"] == 8
 
@@ -259,7 +259,9 @@ class TestSubscriptionManagement:
         return resp.json()["data"]
 
     async def test_列出自己的订阅(self, client, auth_headers):
-        await self._subscribe(client, auth_headers, "https://push.example.com/device-1", "iPhone 15")
+        await self._subscribe(
+            client, auth_headers, "https://push.example.com/device-1", "iPhone 15"
+        )
 
         data = await self._list(client, auth_headers)
         assert data["total"] == 1

@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.deps import CurrentUser
 from app.core.response import success
 from app.db.session import get_db
-from app.schemas.itinerary import ItineraryCreate, ItineraryUpdate
+from app.schemas.itinerary import ItineraryBatchCreate, ItineraryCreate, ItineraryUpdate
 from app.services import itinerary_service
 
 router = APIRouter(prefix="/api/v1/itinerary", tags=["行程管理"])
@@ -79,3 +79,37 @@ async def delete_itinerary(
     if deleted == 0:
         raise HTTPException(status_code=404, detail="行程不存在")
     return success({"deleted": deleted}, message="删除成功")
+
+
+@router.post("/batch", response_model=dict, status_code=status.HTTP_201_CREATED)
+async def batch_create_itineraries(
+    payload: ItineraryBatchCreate,
+    current: CurrentUser,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> dict:
+    """批量新增行程（AI 排行程的「一键保存」入口）。
+
+    逐条写入而不是一把事务：一条格式不对（比如日期写错）不该让
+    整份行程都存不进去。失败项带上原因一起返回，用户能知道少了哪几条。
+    """
+    created = 0
+    failed: list[str] = []
+
+    for item in payload.items:
+        try:
+            await itinerary_service.add_itinerary(
+                user_id=current.id,
+                title=item.title,
+                date_str=item.date,
+                start_time=item.start_time,
+                location=item.location,
+                activity=item.activity,
+                note=item.note,
+                db=db,
+            )
+            created += 1
+        except ValueError as exc:
+            failed.append(f"{item.title}：{exc}")
+
+    message = f"已添加 {created} 条行程" + (f"，{len(failed)} 条失败" if failed else "")
+    return success({"created": created, "failed": failed}, message=message)

@@ -15,6 +15,7 @@ from langchain_core.tools import tool
 
 from app.services import user_knowledge_service
 from app.services.user_context import get_current_user_id
+from skills.itinerary_planner.scripts import planner
 from skills.itinerary_reminder.scripts import reminder
 
 
@@ -70,6 +71,25 @@ async def check_itinerary_weather(query: str) -> str:
         return f"行程查询失败：{exc}"
 
 
+@tool
+async def plan_trip(query: str) -> str:
+    """根据出行需求自动排一份完整行程（含天气规避）。
+
+    适用场景：用户说"周末想去广州玩两天""帮我排个三日游""怎么安排比较好"。
+    内部会解析城市/天数/偏好，查真实逐日天气，再生成带时间的行程；
+    **下雨或高温的日期不会安排户外活动**（生成后会做一次审计纠正）。
+
+    Args:
+        query: 用户的出行需求，如"周末想去广州玩两天，喜欢美食和拍照"。
+    """
+    if not query or not query.strip():
+        return "请说明想去哪、几天，例如「周末想去广州玩两天」。"
+    try:
+        return await planner.run(query.strip())
+    except Exception as exc:  # noqa: BLE001 排程失败要让用户看到原因而不是空白
+        return f"排行程失败：{exc}"
+
+
 def get_local_tools() -> list:
     """返回所有本地工具（进程内、带用户态）。"""
-    return [search_my_plans, check_itinerary_weather]
+    return [search_my_plans, check_itinerary_weather, plan_trip]

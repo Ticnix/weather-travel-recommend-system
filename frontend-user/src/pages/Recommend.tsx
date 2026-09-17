@@ -33,11 +33,14 @@ import {
   type WeatherHead,
 } from '../api/recommend'
 import { listLandmarks, suggestPlaces, type PlaceItem } from '../api/places'
+import TripPlanner from '../components/TripPlanner'
 import { getWeatherVisual } from '../utils/weather'
 
 const { Text, Paragraph } = Typography
 
-type Tab = 'travel' | 'outfit'
+type Tab = 'travel' | 'outfit' | 'plan'
+
+const TABS: Tab[] = ['travel', 'outfit', 'plan']
 
 // 联想下拉项：除展示用 label 外，额外携带完整地点信息（含坐标）
 type PlaceOption = { value: string; label: React.ReactNode; place: PlaceItem }
@@ -62,9 +65,12 @@ function fmtTime(min: number): string {
 
 export default function Recommend() {
   const [searchParams] = useSearchParams()
-  const [tab, setTab] = useState<Tab>(
-    (searchParams.get('tab') as Tab) === 'outfit' ? 'outfit' : 'travel',
-  )
+  const [tab, setTab] = useState<Tab>(() => {
+    // 用 URL 上的 tab 参数决定初始页签，但要校验取值——
+    // 手改 URL 传个非法值不该让页面渲染空白
+    const fromUrl = searchParams.get('tab') as Tab | null
+    return fromUrl && TABS.includes(fromUrl) ? fromUrl : 'travel'
+  })
   const [head, setHead] = useState<WeatherHead | null>(null)
 
   // 出行表单
@@ -186,9 +192,10 @@ export default function Recommend() {
   useEffect(() => {
     if (tab === 'travel') {
       loadTravel()
-    } else {
+    } else if (tab === 'outfit') {
       loadOutfit()
     }
+    // AI 排行程页签不需要预加载：它要用户先输入需求才发起请求
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab])
 
@@ -226,6 +233,7 @@ export default function Recommend() {
             options={[
               { label: '🚇 出行方案', value: 'travel' },
               { label: '👔 穿搭建议', value: 'outfit' },
+              { label: '🗓 AI 排行程', value: 'plan' },
             ]}
           />
         </div>
@@ -464,6 +472,9 @@ export default function Recommend() {
           ) : null}
         </Space>
       )}
+
+      {/* ========== AI 一键排行程 ========== */}
+      {tab === 'plan' && <TripPlanner />}
 
       {/* ========== 穿搭建议 ========== */}
       {tab === 'outfit' && (

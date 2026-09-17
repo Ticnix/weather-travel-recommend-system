@@ -179,3 +179,99 @@ class TestAuthRequired:
         assert (await client.post("/api/v1/itinerary", json={})).status_code == 401
         assert (await client.put("/api/v1/itinerary/1", json={})).status_code == 401
         assert (await client.delete("/api/v1/itinerary/1")).status_code == 401
+
+
+class TestBatchCreate:
+    """AI 排行程的「一键保存」（Day 40）。"""
+
+    async def test_批量写入行程(self, client, auth_headers):
+        payload = {
+            "items": [
+                {
+                    "title": "白云山",
+                    "date": "2026-09-19",
+                    "start_time": "09:30",
+                    "activity": "徒步",
+                },
+                {"title": "广东省博物馆", "date": "2026-09-20", "start_time": "10:00"},
+            ]
+        }
+
+        resp = await client.post("/api/v1/itinerary/batch", json=payload, headers=auth_headers)
+
+        assert resp.status_code == 201
+        assert resp.json()["data"] == {"created": 2, "failed": []}
+        listed = (await client.get("/api/v1/itinerary", headers=auth_headers)).json()["data"]
+        assert listed["total"] == 2
+
+    async def test_单条失败不影响其他条(self, client, auth_headers):
+        """一条日期写错，不该让整份行程都存不进去。"""
+        payload = {
+            "items": [
+                {"title": "正常行程", "date": "2026-09-19"},
+                {"title": "日期写错", "date": "2026/09/19"},
+            ]
+        }
+
+        resp = await client.post("/api/v1/itinerary/batch", json=payload, headers=auth_headers)
+
+        data = resp.json()["data"]
+        assert data["created"] == 1
+        assert len(data["failed"]) == 1
+        assert "日期写错" in data["failed"][0]
+
+    async def test_未登录不能批量写入(self, client):
+        resp = await client.post(
+            "/api/v1/itinerary/batch",
+            json={"items": [{"title": "x", "date": "2026-09-19"}]},
+        )
+        assert resp.status_code == 401
+
+    async def test_空列表被拒(self, client, auth_headers):
+        resp = await client.post(
+            "/api/v1/itinerary/batch", json={"items": []}, headers=auth_headers
+        )
+        assert resp.status_code == 422
+
+
+class TestPlanEndpoint:
+    """AI 一键排行程接口（Day 40）。
+
+    这里**不真调 LLM**：真调既慢又要钱，而且模型输出不稳定，
+    断言它等于给自己制造 flaky。生成逻辑的可靠性由
+    tests/unit/test_itinerary_planner.py 里的纯函数用例保证。
+    """
+
+    async def test_需要登录(self, client):
+        resp = await client.post("/api/v1/recommend/plan", json={"query": "周末去广州玩两天"})
+        assert resp.status_code == 401
+
+    async def test_返回结构化行程(self, client, auth_headers, monkeypatch):
+        async def fake_generate(query, today=None):
+            return {
+                "request": {"city": "广州", "days": 2, "preferences": ["美食"]},
+                "dates": ["2026-09-19", "2026-09-20"],
+                "weather": {"2026-09-19": {"desc": "雷阵雨", "needs_indoor": True}},
+                "plan": {"city": "广州", "days": 2, "summary": "雨天多排室内", "plan": []},
+                "adjustments": ["2026-09-19：白云山（户外）→ 广东省博物馆（室内）"],
+            }
+
+        monkeypatch.setattr("app.routers.recommend.planner.generate", fake_generate)
+
+        resp = await client.post(
+            "/api/v1/recommend/plan",
+            json={"query": "周末想去广州玩两天"},
+            headers=auth_headers,
+        )
+
+        assert resp.status_code == 200
+        data = resp.json()["data"]
+        assert data["request"]["city"] == "广州"
+        # 因天气做过的调整必须返回给前端展示
+        assert data["adjustments"]
+
+    async def test_需求过短被拒(self, client, auth_headers):
+        resp = await client.post(
+            "/api/v1/recommend/plan", json={"query": "玩"}, headers=auth_headers
+        )
+        assert resp.status_code == 422

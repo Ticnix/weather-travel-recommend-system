@@ -8,9 +8,12 @@
 from fastapi import APIRouter, Query
 
 from app.core.cache import cached
+from app.core.deps import CurrentUser
 from app.core.response import success
+from app.schemas.itinerary import PlanRequest
 from app.services import outfit_inspiration
 from app.services.weather_service import fetch_weather
+from skills.itinerary_planner.scripts import planner
 from skills.outfit_recommend.scripts import outfit_engine
 from skills.travel_planning.scripts import route_planner
 
@@ -110,3 +113,18 @@ async def weather_head(
             "temp_max": daily.temp_max if daily else None,
         }
     )
+
+
+@router.post("/plan", response_model=dict)
+async def plan_trip(payload: PlanRequest, current: CurrentUser) -> dict:
+    """AI 一键排行程：按自然语言需求生成结构化行程。
+
+    **只生成、不落库**——是否保存由用户在界面上确认（另走
+    `POST /api/v1/itinerary/batch`）。理由：AI 排出来的行程是"提案"，
+    直接写进用户的行程表等于替他做了决定，而改起来比删掉更烦。
+
+    返回里包含 `adjustments`：因天气被调整的项要**明确告诉用户**，
+    静默替换掉他刚看到的内容比不调整更让人困惑。
+    """
+    result = await planner.generate(payload.query)
+    return success(result)
