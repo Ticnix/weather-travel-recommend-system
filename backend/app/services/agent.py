@@ -33,6 +33,8 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode
 
+from app.core.config import settings
+from app.services import multi_agent
 from app.services.llm_client import get_llm
 from app.services.local_tools import get_local_tools
 from app.services.mcp_client import get_mcp_tools
@@ -355,6 +357,15 @@ def _build_initial_state(user_input: str, history: list[dict] | None = None) -> 
     }
 
 
+def use_multi_agent() -> bool:
+    """当前是否启用 Supervisor 多智能体（配置可一键回退）。
+
+    默认 single：新架构上线第一步是"能一键回退"，
+    出问题改一行配置即可退回旧路径，不必重新发版。
+    """
+    return (settings.AGENT_MODE or "single").strip().lower() == "multi"
+
+
 async def chat(
     user_input: str,
     user_id: int | None = None,
@@ -366,7 +377,17 @@ async def chat(
     - user_id：当前登录用户 ID（可选）。设置到 contextvar，供
       search_my_plans 等「用户私有」工具读取，实现多租户数据隔离。
     - history：历史消息列表，用于多轮上下文。
+
+    按 AGENT_MODE 分派：multi 走 Supervisor 多智能体（领域拆分 + 并行 + 汇总），
+    single 走原来的单 Agent ReAct。intent 字段仍按旧词表返回，避免破坏前端。
     """
+    if use_multi_agent():
+        result = await multi_agent.chat_multi(user_input, user_id)
+        return {
+            "intent": multi_agent.to_legacy_intent(list(result.get("domains") or [])),
+            "answer": result.get("answer", ""),
+        }
+
     initial = _build_initial_state(user_input, history)
     token = set_current_user_id(user_id)
     try:
@@ -389,7 +410,17 @@ async def chat_stream(
 
     用 LangGraph 的 astream(stream_mode="messages") 获取增量消息，
     每个 AIMessageChunk 的 content 作为一段 token 推送。
+
+    multi 模式下先算一次领域（关键词命中时零成本），
+    既用于推意图、也传给多智能体避免重复路由。
     """
+    if use_multi_agent():
+        domains = await multi_agent.plan_domains(user_input)
+        yield {"type": "intent", "intent": multi_agent.to_legacy_intent(domains)}
+        async for event in multi_agent.chat_multi_stream(user_input, user_id, domains):
+            yield event
+        return
+
     initial = _build_initial_state(user_input, history)
     token = set_current_user_id(user_id)
     final_intent = "chat"

@@ -8,6 +8,8 @@
 这就是检查清单里「行程与真实天气不冲突」的真正含义。
 """
 
+from typing import ClassVar
+
 import pytest
 
 from skills.itinerary_planner.scripts import planner
@@ -102,8 +104,8 @@ class TestIsOutdoor:
 
 
 class TestAuditPlan:
-    WEATHER_BAD = {"2026-09-19": {"desc": "雷阵雨", "needs_indoor": True}}
-    WEATHER_GOOD = {"2026-09-19": {"desc": "晴", "needs_indoor": False}}
+    WEATHER_BAD: ClassVar[dict] = {"2026-09-19": {"desc": "雷阵雨", "needs_indoor": True}}
+    WEATHER_GOOD: ClassVar[dict] = {"2026-09-19": {"desc": "晴", "needs_indoor": False}}
 
     def test_坏天气把户外项换成室内候选(self):
         plan = _plan([("2026-09-19", [("09:30", "白云山", "徒步")])])
@@ -117,13 +119,9 @@ class TestAuditPlan:
 
     def test_审计后坏天气日不再出现户外安排(self):
         """本日最关键的断言：不依赖模型是否听话。"""
-        plan = _plan(
-            [("2026-09-19", [("09:30", "白云山", "徒步"), ("20:00", "珠江夜游", "夜游")])]
-        )
+        plan = _plan([("2026-09-19", [("09:30", "白云山", "徒步"), ("20:00", "珠江夜游", "夜游")])])
 
-        fixed, _ = planner.audit_plan(
-            plan, self.WEATHER_BAD, ["广东省博物馆", "天河城购物中心"]
-        )
+        fixed, _ = planner.audit_plan(plan, self.WEATHER_BAD, ["广东省博物馆", "天河城购物中心"])
 
         for item in fixed.plan[0].items:
             assert not planner.is_outdoor(item.title, item.activity), item.title

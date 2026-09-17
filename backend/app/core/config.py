@@ -25,6 +25,12 @@ class Settings(BaseSettings):
     # 当前启用的对话模型提供商：deepseek / qwen / zhipu / openai / moonshot / ollama
     # 仅收录「OpenAI 兼容格式」的模型，避免引入不兼容适配器（如 Anthropic Claude）
     LLM_PROVIDER: str = "deepseek"
+    # Agent 架构模式（Day 41）：
+    #   single —— 单 Agent，意图分类 + 全量工具（旧架构）
+    #   multi  —— Supervisor 多智能体，按领域分组工具、并行执行后汇总
+    # 默认 single：新架构上线的第一步是"能一键回退"，
+    # 出问题改一行配置就能退回旧路径，不用重新发版。
+    AGENT_MODE: str = "single"
 
     # DeepSeek（对话/生成）
     DEEPSEEK_API_KEY: str = ""

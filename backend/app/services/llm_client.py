@@ -157,13 +157,19 @@ async def ainvoke_json(
     `with_structured_output` 走厂商的 function calling / json_schema，
     由模型侧保证结构，可靠得多。
 
+    实现上优先用 **function_calling** 而不是默认的 json_schema：
+    DeepSeek（本项目的默认提供商）对 `response_format=json_schema` 会返回
+    `This response_format type is unavailable now`，而 function calling 是支持的。
+    这个差异是跑 Day 41 的架构对比时暴露的——当时每个问题都白多花了一次
+    失败调用，日志里只有一行 400。
+
     兜底：并非所有 OpenAI 兼容实现都支持结构化输出，
     此时退化为「明确要求只输出 JSON + 从文本里提取」，
     保证功能不因厂商能力差异而不可用（代价是可靠性略降）。
     """
     llm = get_llm(provider)
     try:
-        structured = llm.with_structured_output(schema)
+        structured = llm.with_structured_output(schema, method="function_calling")
         result = await structured.ainvoke(_build_messages(prompt, system))
         if isinstance(result, schema):
             return result
