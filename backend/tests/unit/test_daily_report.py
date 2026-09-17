@@ -108,7 +108,9 @@ class TestDispatch:
 
         calls: list[int] = []
 
-        async def fake_notify(session, uid, title, body, url):
+        # **_kwargs：notify_user 新增了 category 等参数，
+        # 用 **kwargs 兜住，避免签名一变就要跟着改测试
+        async def fake_notify(session, uid, title, body, url, **_kwargs):
             calls.append(uid)
             return {"web_push": {"status": "skipped"}, "email": {"status": "skipped"}}
 
@@ -134,7 +136,9 @@ class TestDispatch:
 
         calls: list[int] = []
 
-        async def fake_notify(session, uid, title, body, url):
+        # **_kwargs：notify_user 新增了 category 等参数，
+        # 用 **kwargs 兜住，避免签名一变就要跟着改测试
+        async def fake_notify(session, uid, title, body, url, **_kwargs):
             calls.append(uid)
             return {"web_push": {"status": "skipped"}, "email": {"status": "skipped"}}
 
@@ -165,7 +169,7 @@ class TestDispatch:
                 raise RuntimeError("该用户的行程查询炸了")
             return _dashboard()
 
-        async def fake_notify(session, uid, title, body, url):
+        async def fake_notify(session, uid, title, body, url, **_kwargs):
             return {"web_push": {"status": "sent"}, "email": {"status": "skipped"}}
 
         monkeypatch.setattr("app.services.daily_report.build_dashboard", fake_dashboard)

@@ -11,6 +11,8 @@ export interface SubscribePayload {
 export interface NotificationLogItem {
   id: number
   channel: 'web_push' | 'email'
+  /** 通知类型（Day 39）：用来在历史里区分早报/预警/行程提醒 */
+  category: NotificationCategory
   title: string
   body: string | null
   url: string | null
@@ -68,4 +70,45 @@ export async function getMorningReport(): Promise<{ enabled: boolean; hour: numb
 /** 设置早报开关与推送小时（关闭后分发任务不再推送该用户） */
 export async function updateMorningReport(enabled: boolean, hour: number): Promise<void> {
   await http.put('/notifications/morning-report', { enabled, hour })
+}
+
+// ===== 通知偏好与订阅管理（Day 39）=====
+
+export type NotificationCategory = 'morning' | 'alert' | 'itinerary' | 'system'
+
+export interface NotificationPrefs {
+  morning_enabled: boolean
+  morning_hour: number
+  alert_enabled: boolean
+  itinerary_enabled: boolean
+}
+
+export interface SubscriptionItem {
+  id: number
+  user_agent: string | null
+  is_active: boolean
+  created_at: string | null
+}
+
+/** 读取通知偏好（未设置过时后端返回默认值：全开、7 点） */
+export async function getPrefs(): Promise<NotificationPrefs> {
+  return (await http.get('/notifications/prefs')) as unknown as NotificationPrefs
+}
+
+/** 部分更新通知偏好：只传要改的字段，避免把另一个开关覆盖回旧值 */
+export async function updatePrefs(payload: Partial<NotificationPrefs>): Promise<NotificationPrefs> {
+  return (await http.put('/notifications/prefs', payload)) as unknown as NotificationPrefs
+}
+
+/** 当前账号的推送订阅（一台设备一条） */
+export async function listSubscriptions(): Promise<SubscriptionItem[]> {
+  const data = (await http.get('/notifications/subscriptions')) as unknown as {
+    items: SubscriptionItem[]
+  }
+  return data.items
+}
+
+/** 退订指定设备（按订阅 id，只影响这一台） */
+export async function deleteSubscription(id: number): Promise<void> {
+  await http.delete(`/notifications/subscriptions/${id}`)
 }

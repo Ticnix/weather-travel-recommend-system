@@ -106,8 +106,9 @@ async def dispatch_to_users(hour: int, factory) -> dict[str, Any]:
             try:
                 dashboard = await build_dashboard(uid)
                 title, body = build_report_text(dashboard)
+                # category 决定了这条能不能被用户的「每日早报」开关拦下
                 result = await notification_service.notify_user(
-                    db, uid, title=title, body=body, url="/"
+                    db, uid, title=title, body=body, url="/", category="morning"
                 )
                 channels_ok = any(r.get("status") == "sent" for r in result.values())
                 sent += 1 if channels_ok else 0

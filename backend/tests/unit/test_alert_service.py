@@ -217,7 +217,8 @@ class TestPollAndDispatch:
         pushed: list[tuple[int, str]] = []
         published: list[dict] = []
 
-        async def fake_notify(session, user_id, title, body, url):
+        # **_kwargs：notify_user 有 category 等参数，兜住避免签名一变就改测试
+        async def fake_notify(session, user_id, title, body, url, **_kwargs):
             pushed.append((user_id, title))
             return {"web_push": {"status": "sent"}, "email": {"status": "skipped"}}
 
@@ -252,7 +253,7 @@ class TestPollAndDispatch:
 
         pushed: list[int] = []
 
-        async def fake_notify(session, user_id, title, body, url):
+        async def fake_notify(session, user_id, title, body, url, **_kwargs):
             pushed.append(user_id)
             return {"web_push": {"status": "sent"}}
 

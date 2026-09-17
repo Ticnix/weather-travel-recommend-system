@@ -190,3 +190,99 @@ class TestAlertStream:
         assert "connected" in body  # 连接建立后立刻回注释行
         assert "data:" in body  # 事件以 SSE 的 data 行下发
         assert "暴雨红色预警" in body
+
+
+class TestPrefs:
+    """通知偏好统一接口（Day 39）。"""
+
+    async def test_默认全开(self, client, auth_headers):
+        resp = await client.get("/api/v1/notifications/prefs", headers=auth_headers)
+        assert resp.json()["data"] == {
+            "morning_enabled": True,
+            "morning_hour": 7,
+            "alert_enabled": True,
+            "itinerary_enabled": True,
+        }
+
+    async def test_部分更新不会覆盖其他字段(self, client, auth_headers):
+        await client.put(
+            "/api/v1/notifications/prefs", json={"alert_enabled": False}, headers=auth_headers
+        )
+        # 再改另一个开关：前一个必须保留。
+        # 前端每个开关是独立保存的，全量覆盖会让快速连点丢掉设置。
+        resp = await client.put(
+            "/api/v1/notifications/prefs", json={"itinerary_enabled": False}, headers=auth_headers
+        )
+        data = resp.json()["data"]
+        assert data["alert_enabled"] is False
+        assert data["itinerary_enabled"] is False
+        assert data["morning_enabled"] is True
+
+    async def test_偏好持久化(self, client, auth_headers):
+        await client.put(
+            "/api/v1/notifications/prefs",
+            json={"morning_enabled": False, "morning_hour": 8},
+            headers=auth_headers,
+        )
+        data = (
+            await client.get("/api/v1/notifications/prefs", headers=auth_headers)
+        ).json()["data"]
+        assert data["morning_enabled"] is False
+        assert data["morning_hour"] == 8
+
+    async def test_推送时间超出范围被拒(self, client, auth_headers):
+        resp = await client.put(
+            "/api/v1/notifications/prefs", json={"morning_hour": 23}, headers=auth_headers
+        )
+        assert resp.status_code == 422
+
+    async def test_未登录不能读写偏好(self, client):
+        assert (await client.get("/api/v1/notifications/prefs")).status_code == 401
+
+
+class TestSubscriptionManagement:
+    """多设备订阅管理（Day 39）。"""
+
+    async def _subscribe(self, client, headers, endpoint: str, ua: str = "test-agent"):
+        return await client.post(
+            "/api/v1/notifications/subscriptions",
+            json={
+                "endpoint": endpoint,
+                "keys": {"p256dh": "k" * 20, "auth": "a" * 20},
+                "user_agent": ua,
+            },
+            headers=headers,
+        )
+
+    async def _list(self, client, headers) -> dict:
+        resp = await client.get("/api/v1/notifications/subscriptions", headers=headers)
+        return resp.json()["data"]
+
+    async def test_列出自己的订阅(self, client, auth_headers):
+        await self._subscribe(client, auth_headers, "https://push.example.com/device-1", "iPhone 15")
+
+        data = await self._list(client, auth_headers)
+        assert data["total"] == 1
+        assert data["items"][0]["user_agent"] == "iPhone 15"
+        assert data["items"][0]["is_active"] is True
+
+    async def test_退订指定设备(self, client, auth_headers):
+        await self._subscribe(client, auth_headers, "https://push.example.com/device-2")
+        sub_id = (await self._list(client, auth_headers))["items"][0]["id"]
+
+        resp = await client.delete(
+            f"/api/v1/notifications/subscriptions/{sub_id}", headers=auth_headers
+        )
+        assert resp.status_code == 200
+        assert (await self._list(client, auth_headers))["total"] == 0
+
+    async def test_不能退订别人的设备(self, client, auth_headers, admin_headers):
+        await self._subscribe(client, admin_headers, "https://push.example.com/admin-device")
+        sub_id = (await self._list(client, admin_headers))["items"][0]["id"]
+
+        # 别人的订阅按「不存在」处理：不泄漏这个 id 是否有效
+        resp = await client.delete(
+            f"/api/v1/notifications/subscriptions/{sub_id}", headers=auth_headers
+        )
+        assert resp.status_code == 404
+        assert (await self._list(client, admin_headers))["total"] == 1

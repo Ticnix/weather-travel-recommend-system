@@ -19,6 +19,10 @@ export default defineConfig({
     // 不开启 globals：显式 import { describe, it, expect } 更清晰，
     // 也省去改 tsconfig types 的麻烦
     globals: false,
+    // 默认 5s 在并行跑 + 本机跑着 docker 时不够用（组件渲染明显变慢），
+    // 会出现「单跑必过、全量偶挂」的假失败；放宽比事后重跑靠谱
+    testTimeout: 20_000,
+    hookTimeout: 20_000,
     coverage: {
       provider: 'v8',
       reporter: ['text', 'html'],

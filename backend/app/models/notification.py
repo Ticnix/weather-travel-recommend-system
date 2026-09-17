@@ -39,6 +39,10 @@ class NotificationLog(Base, TimestampMixin):
         ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False
     )
     channel: Mapped[str] = mapped_column(String(16), nullable=False)  # web_push / email
+    # 通知类型（Day 39）：morning / alert / itinerary / system。
+    # 存下来才能让「推送历史」告诉用户这条是什么类型的，
+    # 也才能在用户问"为什么没收到预警"时查到"被哪条偏好拦下了"。
+    category: Mapped[str] = mapped_column(String(16), default="system", nullable=False)
     title: Mapped[str] = mapped_column(String(200), nullable=False)
     body: Mapped[str | None] = mapped_column(Text, nullable=True)
     url: Mapped[str | None] = mapped_column(String(500), nullable=True)
@@ -65,3 +69,7 @@ class NotificationPref(Base, TimestampMixin):
     )
     morning_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     morning_hour: Mapped[int] = mapped_column(Integer, default=7, nullable=False)
+    # 类型开关（Day 39）：让用户能按类型关掉打扰，而不是只能"全开或全关"。
+    # 默认全开——用户没表达过意愿时，默认值应该是有用的那一边。
+    alert_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    itinerary_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)

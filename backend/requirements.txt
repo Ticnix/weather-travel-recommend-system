@@ -19,3 +19,9 @@ langgraph>=0.2.60
 langchain-core>=0.3.0
 mcp>=1.0.0
 langchain-mcp-adapters>=0.1.0
+# Web Push 发送（Day 34 引入）。之前只装在本地 venv 里没写进来，
+# 结果是「本地测试全过、容器启动就 ModuleNotFoundError」——
+# 凡是代码里直接 import 的第三方库，必须在这里显式声明，
+# 不能依赖别人的传递依赖。
+pywebpush>=2.0.0
+httpx>=0.27.0

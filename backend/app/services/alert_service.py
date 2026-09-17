@@ -125,7 +125,7 @@ async def dispatch_alert(
     for user_id in user_ids:
         try:
             result = await notification_service.notify_user(
-                db, user_id, title=title, body=body, url="/"
+                db, user_id, title=title, body=body, url="/", category="alert"
             )
             if any(r.get("status") == "sent" for r in result.values()):
                 delivered += 1

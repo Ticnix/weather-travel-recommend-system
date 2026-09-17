@@ -3,7 +3,7 @@
 import json
 from collections.abc import AsyncIterator
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,7 +14,12 @@ from app.core.deps import CurrentUser
 from app.core.response import success
 from app.db.session import get_db
 from app.models.notification import NotificationLog, NotificationPref, PushSubscription
-from app.schemas.notification import MorningReportIn, SubscribeIn, UnsubscribeIn
+from app.schemas.notification import (
+    MorningReportIn,
+    NotificationPrefsIn,
+    SubscribeIn,
+    UnsubscribeIn,
+)
 from app.services import notification_service
 
 router = APIRouter(prefix="/api/v1/notifications", tags=["通知"])
@@ -111,6 +116,7 @@ async def my_logs(
                 {
                     "id": it.id,
                     "channel": it.channel,
+                    "category": it.category,
                     "title": it.title,
                     "body": it.body,
                     "url": it.url,
@@ -122,6 +128,99 @@ async def my_logs(
             ],
         }
     )
+
+
+@router.get("/prefs", response_model=dict)
+async def get_prefs(current: CurrentUser, db: AsyncSession = Depends(get_db)) -> dict:
+    """当前用户的通知偏好。
+
+    读接口**不落库**：没设置过就返回默认值（全开、7 点），
+    否则每个人第一次进设置页都会平白多出一行记录。
+    """
+    pref = (
+        await db.execute(select(NotificationPref).where(NotificationPref.user_id == current.id))
+    ).scalar_one_or_none()
+    return success(
+        data={
+            "morning_enabled": pref.morning_enabled if pref else True,
+            "morning_hour": pref.morning_hour if pref else 7,
+            "alert_enabled": pref.alert_enabled if pref else True,
+            "itinerary_enabled": pref.itinerary_enabled if pref else True,
+        }
+    )
+
+
+@router.put("/prefs", response_model=dict)
+async def update_prefs(
+    payload: NotificationPrefsIn,
+    current: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """部分更新通知偏好：只改传进来的字段，其余保持不动。"""
+    pref = await notification_service.get_prefs(db, current.id)
+    for field, value in payload.model_dump(exclude_unset=True, exclude_none=True).items():
+        setattr(pref, field, value)
+    await db.commit()
+    await db.refresh(pref)
+    return success(
+        data={
+            "morning_enabled": pref.morning_enabled,
+            "morning_hour": pref.morning_hour,
+            "alert_enabled": pref.alert_enabled,
+            "itinerary_enabled": pref.itinerary_enabled,
+        },
+        message="偏好已保存",
+    )
+
+
+@router.get("/subscriptions", response_model=dict)
+async def my_subscriptions(current: CurrentUser, db: AsyncSession = Depends(get_db)) -> dict:
+    """当前用户的推送订阅列表（一台设备一条）。
+
+    做这个列表是为了让「退订」有个明确的落点：
+    只给一个「关闭推送」按钮的话，用户不知道关的是哪台设备。
+    """
+    subs = (
+        (
+            await db.execute(
+                select(PushSubscription)
+                .where(PushSubscription.user_id == current.id)
+                .order_by(PushSubscription.id.desc())
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return success(
+        data={
+            "total": len(subs),
+            "items": [
+                {
+                    "id": s.id,
+                    "user_agent": s.user_agent,
+                    "is_active": s.is_active,
+                    "created_at": s.created_at.isoformat() if s.created_at else None,
+                }
+                for s in subs
+            ],
+        }
+    )
+
+
+@router.delete("/subscriptions/{sub_id}", response_model=dict)
+async def delete_subscription(
+    sub_id: int,
+    current: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """退订指定设备（只能删自己的订阅）。"""
+    sub = await db.get(PushSubscription, sub_id)
+    # 别人的订阅一律按「不存在」处理，不泄漏"这个 id 是有效的"
+    if sub is None or sub.user_id != current.id:
+        raise HTTPException(status_code=404, detail="订阅不存在")
+    await db.delete(sub)
+    await db.commit()
+    return success(message="已退订该设备")
 
 
 @router.get("/morning-report", response_model=dict)
@@ -147,20 +246,14 @@ async def update_morning_report(
     current: CurrentUser,
     db: AsyncSession = Depends(get_db),
 ) -> dict:
-    """设置每日早报的开关与推送时间（关闭开关后分发任务将不再推送该用户）。"""
-    pref = (
-        await db.execute(select(NotificationPref).where(NotificationPref.user_id == current.id))
-    ).scalar_one_or_none()
-    if pref:
-        pref.morning_enabled = payload.enabled
-        pref.morning_hour = payload.hour
-    else:
-        pref = NotificationPref(
-            user_id=current.id,
-            morning_enabled=payload.enabled,
-            morning_hour=payload.hour,
-        )
-        db.add(pref)
+    """设置每日早报的开关与推送时间（关闭开关后分发任务将不再推送该用户）。
+
+    保留这个接口是为了兼容既有前端与测试——它本质上是 `/prefs` 的
+    「只改早报字段」子集，实现上共用同一个懒初始化入口。
+    """
+    pref = await notification_service.get_prefs(db, current.id)
+    pref.morning_enabled = payload.enabled
+    pref.morning_hour = payload.hour
     await db.commit()
     return success(data={"enabled": payload.enabled, "hour": payload.hour})
 

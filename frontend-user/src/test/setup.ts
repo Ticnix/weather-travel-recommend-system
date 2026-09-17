@@ -8,13 +8,18 @@
  */
 
 import '@testing-library/jest-dom/vitest'
-import { cleanup } from '@testing-library/react'
+import { cleanup, configure } from '@testing-library/react'
 import { afterEach, vi } from 'vitest'
 
 // 每个用例结束后卸载已渲染的组件，避免 DOM 在用例之间串味
 afterEach(() => {
   cleanup()
 })
+
+// 异步查询（findBy* / waitFor）默认只等 1 秒。antd 组件渲染较重，
+// 而本机通常同时跑着 docker 容器，并行跑测试时会偶发超时——
+// 表现为「单跑必过、全量偶挂」，最容易被误判成功能问题。
+configure({ asyncUtilTimeout: 5000 })
 
 // antd 的响应式栅格依赖 matchMedia
 Object.defineProperty(window, 'matchMedia', {

@@ -25,3 +25,17 @@ class MorningReportIn(BaseModel):
 
     enabled: bool
     hour: int = Field(7, ge=5, le=22)
+
+
+class NotificationPrefsIn(BaseModel):
+    """通知偏好（部分更新：只传想改的字段）。
+
+    刻意做成「全部可选」而不是要求全量提交：
+    前端的每个开关是独立保存的，全量提交会把另一个开关的值回滚成
+    上一次读到的旧值——用户快速连点两个开关时就会丢设置。
+    """
+
+    morning_enabled: bool | None = None
+    morning_hour: int | None = Field(None, ge=5, le=22)
+    alert_enabled: bool | None = None
+    itinerary_enabled: bool | None = None

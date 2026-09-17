@@ -22,6 +22,7 @@ celery_app = Celery(
         "app.tasks.news_tasks",
         "app.tasks.report_tasks",
         "app.tasks.alert_tasks",
+        "app.tasks.reminder_tasks",
     ],
 )
 
@@ -56,6 +57,12 @@ celery_app.conf.update(
         # 预警以小时为尺度演进，无需更频繁。
         "poll-weather-alerts": {
             "task": "app.tasks.alert_tasks.poll_weather_alerts",
+            "schedule": crontab(minute="*/10"),
+        },
+        # 出发前行程提醒：间隔与提醒窗口宽度一致（10 分钟），
+        # 这样一条行程只会命中一个窗口，天然不会重复提醒
+        "dispatch-itinerary-reminders": {
+            "task": "app.tasks.reminder_tasks.dispatch_itinerary_reminders",
             "schedule": crontab(minute="*/10"),
         },
     },

@@ -81,8 +81,12 @@ test.describe('注册 / 登录 / 退出', () => {
     // 名称用正则：菜单项带了图标，可访问名可能是「logout 退出登录」
     await page.getByRole('menuitem', { name: /退出登录/ }).click()
 
-    // 退出后头部应重新出现「登录」按钮，且本地 token 被清掉
-    await expect(page.getByRole('button', { name: /登\s*录/ })).toBeVisible()
+    // 退出后头部应重新出现「登录」按钮，且本地 token 被清掉。
+    // 必须限定在 header 内：首页「近期行程」空态里还有一个「去登录」按钮，
+    // 不限定的话会命中两个元素（正则 登\s*录 对两者都成立）
+    await expect(
+      page.locator('header').getByRole('button', { name: /登\s*录/ }),
+    ).toBeVisible()
     const token = await page.evaluate(() => localStorage.getItem('wt_token'))
     expect(token).toBeNull()
   })
