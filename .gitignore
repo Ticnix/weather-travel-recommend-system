@@ -40,3 +40,9 @@ dist/
 
 # 工具运行期目录（本地环境相关，不入库）
 .workbuddy/
+# 临时探针/截图（2026-09-28 清理）
+.probe_*
+.frame_probe.py
+shot-*.png
+fe-check.txt
+risk-*-mobile.png
