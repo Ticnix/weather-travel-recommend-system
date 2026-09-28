@@ -1,0 +1,25 @@
+# 构建上下文排除表。
+#
+# 为什么必须有这个文件：本目录下的 .venv 有 311MB，不排除的话每次构建都要把它
+# 打包上传（实测上下文 238MB、速率 ~1MB/s，传 200+ 秒后经常被取消，
+# 表现为"构建又失败了 / 无输出"）。代码本身只有几 MB，构建本该是秒级的。
+.venv
+venv
+env
+__pycache__
+*.pyc
+*.pyo
+.pytest_cache
+.mypy_cache
+.ruff_cache
+htmlcov
+.coverage
+.coverage.*
+coverage.xml
+.git
+.gitignore
+*.log
+*.sqlite3
+
+# 注意：**不要**排除 .env —— compose 的 env_file 会读它，
+# 且容器内部分的本地调试脚本也依赖它。

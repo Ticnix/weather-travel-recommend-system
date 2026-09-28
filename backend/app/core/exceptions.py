@@ -28,9 +28,24 @@ def register_exception_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(RequestValidationError)
     async def _validation(_: Request, exc: RequestValidationError) -> JSONResponse:
+        """参数校验失败 → 422，并把**第一条原因**提到 message。
+
+        坑：pydantic v2 的 `exc.errors()` 里带 `ctx.error`（原始异常对象），
+        直接塞进 JSON 会让这个处理器自己抛 TypeError（"Object of type ValueError
+        is not JSON serializable"），于是 422 变成 500，用户还看到一句完全
+        无关的错误。这里只保留可序列化的 loc/msg。
+        """
+        details = [
+            {
+                "loc": ".".join(str(part) for part in err.get("loc", ())),
+                "msg": err.get("msg", ""),
+            }
+            for err in exc.errors()
+        ]
+        first = (details[0]["msg"] if details else "").removeprefix("Value error, ").strip()
         return JSONResponse(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            content=error(code=422, message="请求参数校验失败", data=exc.errors()),
+            content=error(code=422, message=first or "请求参数校验失败", data=details),
         )
 
     @app.exception_handler(IntegrityError)

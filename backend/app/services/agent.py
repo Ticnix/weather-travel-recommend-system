@@ -34,7 +34,7 @@ from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode
 
 from app.core.config import settings
-from app.services import multi_agent
+from app.services import llm_client, multi_agent
 from app.services.llm_client import get_llm
 from app.services.local_tools import get_local_tools
 from app.services.mcp_client import get_mcp_tools
@@ -449,3 +449,86 @@ async def chat_stream(
         reset_current_user_id(token)
 
     yield {"type": "done"}
+
+
+# 视觉/多模态回答的系统提示：强调"只描述图上真实有的东西"，
+# 模型看图时最常见的失败是顺着用户的话编造细节（用户说"这是南沙吗"，它就答"是"）
+VISION_SYSTEM_PROMPT = """你是看图/看资料的出行助手。要求：
+
+1. 只描述图片里**真实可见**的信息；看不清或图片里没有的，直接说"图上看不出"，
+   不要顺着用户的提问去猜（例如用户问"这是南沙吗"，没有地标依据就要说明无法判断）。
+2. 如果用户还给出了文件或语音文本，把它当作背景资料一起考虑。
+3. 回答用中文，简洁、分点；涉及天气/行程建议时只给通用建议，
+   并提醒用户"需要实时天气请用文字直接问我"，因为这条通道不查实时数据。
+"""
+
+
+async def chat_stream_with_images(
+    user_input: str,
+    image_urls: list[str],
+    history: list[dict] | None = None,
+):
+    """带图片的流式对话：直接走视觉模型。
+
+    **为什么单独一条路，而不是把图片塞进 ReAct 图**：
+    图里的模型取自 LLM_PROVIDER（本项目默认 deepseek-chat，纯文本），
+    塞图片会被上游直接 400；而"看一眼图问一句"通常也用不上工具。
+
+    代价（写清楚，不藏着）：这条路径**不查实时天气、不查知识库、不调工具**。
+    需要这些能力时，让用户用文字提问即可——这样比"能发图但答得一塌糊涂"要好。
+    """
+    yield {"type": "intent", "intent": "vision"}
+    provider = settings.VISION_PROVIDER or settings.LLM_PROVIDER
+    model = settings.VISION_MODEL or None
+    try:
+        async for piece in llm_client.astream_multimodal(
+            user_input, image_urls, system=VISION_SYSTEM_PROMPT, provider=provider, model=model
+        ):
+            yield {"type": "token", "content": piece}
+    except Exception as exc:  # noqa: BLE001 视觉模型不可用不该让整条流断掉
+        logger.exception("视觉模型调用失败 provider=%s model=%s: %s", provider, model, exc)
+        # 把上游的真实原因翻成人话：同样是"图片失败"，
+        # Key 无效 / 模型名不对 / 限流 的处理方式完全不同
+        status = getattr(exc, "status_code", None)
+        detail = str(getattr(exc, "message", "") or exc).strip()[:160]
+
+        if status in (401, 403):
+            llm_client.mark_vision_broken(f"HTTP {status} {detail}")
+            hint = (
+                f"视觉模型的 Key 被「{provider}」拒绝（HTTP {status}）："
+                "通常是 Key 过期、复制不全（智谱控制台里的 Key 一般是「id.secret」两段），"
+                "或账号没有该模型的权限"
+            )
+        elif status == 404:
+            llm_client.mark_vision_broken(f"HTTP 404 {detail}")
+            hint = f"视觉模型「{model}」不存在或该账号无权调用，可换成 glm-4v / glm-4v-plus 再试"
+        elif status == 429:
+            hint = "视觉模型超出配额或限流，稍后再试或换模型"
+        elif status is None:
+            hint = f"视觉模型调用失败（{type(exc).__name__}），可能是网络或端点配置问题"
+        else:
+            hint = f"视觉模型返回 HTTP {status}"
+
+        extra = f"\n（服务商返回：{detail}）" if detail else ""
+        yield {
+            "type": "token",
+            "content": (
+                f"抱歉，这张图没能识别：{hint}。{extra}\n\n"
+                "**截图类图片会自动走离线 OCR**：Key 被拒后我已临时切到 OCR 路径，"
+                "重新上传一次图片即可；也可以用文字描述图片内容。"
+            ),
+        }
+    yield {"type": "done"}
+
+
+async def chat_with_images(
+    user_input: str,
+    image_urls: list[str],
+    history: list[dict] | None = None,
+) -> dict:
+    """非流式版本（/chat 同步接口用）：把流式结果拼起来。"""
+    parts: list[str] = []
+    async for evt in chat_stream_with_images(user_input, image_urls, history=history):
+        if evt.get("type") == "token":
+            parts.append(evt.get("content", ""))
+    return {"intent": "vision", "answer": "".join(parts)}

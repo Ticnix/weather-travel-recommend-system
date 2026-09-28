@@ -30,6 +30,7 @@ description: AI 一键排行程技能。当用户说"想去某地玩几天""帮�
 
 ## 数据来源
 - 天气：统一天气服务层（和风 / Open-Meteo 自动降级）
-- 景点：高德 inputtips（`amap_client.suggest_places`），无 Key 时用内置地标库
+- 景点：高德 POI 检索（`amap_client.search_pois`，带所在行政区；指定区域时只取区内），
+  无 Key 时用内置地标库
 - 生成：`llm_client.ainvoke_json`（多提供商）
 - 保存：由 `itinerary_service` 落库，本 Skill 只负责生成

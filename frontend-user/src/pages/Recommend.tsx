@@ -7,7 +7,6 @@ import {
   Input,
   Progress,
   Segmented,
-  Skeleton,
   Space,
   Tag,
   Typography,
@@ -34,7 +33,10 @@ import {
 } from '../api/recommend'
 import { listLandmarks, suggestPlaces, type PlaceItem } from '../api/places'
 import TripPlanner from '../components/TripPlanner'
+import LoadingState from '../components/LoadingState'
+import EmptyState from '../components/EmptyState'
 import { getWeatherVisual } from '../utils/weather'
+import { useIsMobile } from '../utils/useIsMobile'
 
 const { Text, Paragraph } = Typography
 
@@ -72,6 +74,7 @@ export default function Recommend() {
     return fromUrl && TABS.includes(fromUrl) ? fromUrl : 'travel'
   })
   const [head, setHead] = useState<WeatherHead | null>(null)
+  const isMobile = useIsMobile()
 
   // 出行表单
   const [origin, setOrigin] = useState('广州南站')
@@ -95,6 +98,8 @@ export default function Recommend() {
   const [pref, setPref] = useState<string | null>(null)
   const [outfitLoading, setOutfitLoading] = useState(false)
   const [outfit, setOutfit] = useState<OutfitResult | null>(null)
+  // 穿搭失败原先会走到"什么都不渲染"的分支，页面上完全看不出发生了事
+  const [outfitError, setOutfitError] = useState<string | null>(null)
   // 穿搭灵感（社交平台内容）：独立加载，避免联网搜索拖慢规则建议
   const [ideas, setIdeas] = useState<OutfitIdeas | null>(null)
   const [ideasLoading, setIdeasLoading] = useState(false)
@@ -171,11 +176,15 @@ export default function Recommend() {
 
   const loadOutfit = async () => {
     setOutfitLoading(true)
+    setOutfitError(null)
     setIdeas(null)
     setIdeasLoading(true)
     try {
       const res = await recommendOutfit('广州', scene ?? undefined, pref ?? undefined)
       setOutfit(res)
+    } catch {
+      setOutfit(null)
+      setOutfitError('穿搭服务这次没有返回结果，可能是暂时的网络或服务波动')
     } finally {
       setOutfitLoading(false)
     }
@@ -214,13 +223,16 @@ export default function Recommend() {
             gap: 12,
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-            <span style={{ fontSize: 44 }}>{head ? visual.icon : '🌤️'}</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 10 : 16 }}>
+            <span style={{ fontSize: isMobile ? 30 : 44 }}>{head ? visual.icon : '🌤️'}</span>
             <div>
-              <div className="jp-serif" style={{ fontSize: 18, fontWeight: 600, color: 'var(--jp-ink)' }}>
+              <div
+                className="jp-serif"
+                style={{ fontSize: isMobile ? 16 : 18, fontWeight: 600, color: 'var(--jp-ink)' }}
+              >
                 广州 · {head?.desc ?? '…'}
               </div>
-              <Text style={{ color: 'var(--jp-ink-2)', fontSize: 13 }}>
+              <Text style={{ color: 'var(--jp-ink-2)', fontSize: isMobile ? 12 : 13 }}>
                 {head ? `${head.temp_min ?? '--'}~${head.temp_max ?? '--'}°C` : ''}
                 {head?.feels_like != null ? ` · 体感 ${head.feels_like}°C` : ''}
                 {head?.humidity != null ? ` · 湿度 ${head.humidity}%` : ''}
@@ -230,11 +242,20 @@ export default function Recommend() {
           <Segmented
             value={tab}
             onChange={(v) => setTab(v as Tab)}
-            options={[
-              { label: '🚇 出行方案', value: 'travel' },
-              { label: '👔 穿搭建议', value: 'outfit' },
-              { label: '🗓 AI 排行程', value: 'plan' },
-            ]}
+            // 手机上用短的页签文案：三个全称会把 Segmented 挤到换行，也白占一行高度
+            options={
+              isMobile
+                ? [
+                    { label: '🚇 出行', value: 'travel' },
+                    { label: '👔 穿搭', value: 'outfit' },
+                    { label: '🗓 排程', value: 'plan' },
+                  ]
+                : [
+                    { label: '🚇 出行方案', value: 'travel' },
+                    { label: '👔 穿搭建议', value: 'outfit' },
+                    { label: '🗓 AI 排行程', value: 'plan' },
+                  ]
+            }
           />
         </div>
       </div>
@@ -244,11 +265,13 @@ export default function Recommend() {
         <Space direction="vertical" size={16} style={{ width: '100%' }}>
           {/* 输入区 */}
           <div className="jp-card" style={{ padding: 20 }}>
+            {/* 单列还是三列：手机上三列硬挤一行时，中文输入框只剩 100px 宽，
+                「出发地：输入后从下拉选择」会逐字换行成竖排 —— 这就是丑的根源 */}
             <div
               style={{
                 display: 'grid',
-                gridTemplateColumns: '1fr 1fr auto',
-                gap: 12,
+                gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr auto',
+                gap: 10,
                 alignItems: 'center',
               }}
             >
@@ -334,13 +357,23 @@ export default function Recommend() {
 
             {/* 选点状态：明确告知当前按「坐标」还是「地名」规划 */}
             <div style={{ marginTop: 10, fontSize: 12, color: 'var(--jp-ink-3)' }}>
-              {originPoint
-                ? `出发地已锁定坐标（${originPoint.lng.toFixed(4)}, ${originPoint.lat.toFixed(4)}）`
-                : '出发地未选点，将按地名解析'}
-              {' · '}
-              {destinationPoint
-                ? `目的地已锁定坐标（${destinationPoint.lng.toFixed(4)}, ${destinationPoint.lat.toFixed(4)}）`
-                : '目的地未选点，将按地名解析'}
+              {isMobile ? (
+                /* 手机上一行放不下两串坐标（会折成三行），压成两个短标签 */
+                <Space size={6} wrap>
+                  <span className="jp-chip">{originPoint ? '📍 起点已定位' : '📍 起点按地名'}</span>
+                  <span className="jp-chip">{destinationPoint ? '🎯 终点已定位' : '🎯 终点按地名'}</span>
+                </Space>
+              ) : (
+                <>
+                  {originPoint
+                    ? `出发地已锁定坐标（${originPoint.lng.toFixed(4)}, ${originPoint.lat.toFixed(4)}）`
+                    : '出发地未选点，将按地名解析'}
+                  {' · '}
+                  {destinationPoint
+                    ? `目的地已锁定坐标（${destinationPoint.lng.toFixed(4)}, ${destinationPoint.lat.toFixed(4)}）`
+                    : '目的地未选点，将按地名解析'}
+                </>
+              )}
             </div>
           </div>
 
@@ -352,7 +385,12 @@ export default function Recommend() {
 
           {travelLoading ? (
             <div className="jp-card" style={{ padding: 24 }}>
-              <Skeleton active paragraph={{ rows: 6 }} />
+              {/* 出行规划要联网算多套方案并评分，属于慢操作 */}
+              {/* 文案避开「出行方案」这个 tab 名：否则按子串匹配的断言会命中两个元素 */}
+              <LoadingState
+                text="正在为你规划出行路线…"
+                hint="要拉取多套路线方案并结合今日天气评分，通常 3~10 秒"
+              />
             </div>
           ) : travel ? (
             <>
@@ -528,7 +566,11 @@ export default function Recommend() {
 
           {outfitLoading ? (
             <div className="jp-card" style={{ padding: 24 }}>
-              <Skeleton active paragraph={{ rows: 6 }} />
+              {/* 同理避开「穿搭建议」这个 tab 名与结果卡片标题 */}
+              <LoadingState
+                text="正在生成搭配建议…"
+                hint="结合当天温度、降水与所选场景匹配规则，通常 2~5 秒"
+              />
             </div>
           ) : outfit ? (
             <>
@@ -601,7 +643,11 @@ export default function Recommend() {
                 </div>
 
                 {ideasLoading ? (
-                  <Skeleton active paragraph={{ rows: 3 }} />
+                  <LoadingState
+                    compact
+                    text="正在联网搜索搭配灵感…"
+                    hint="要抓取社交平台的真实搭配内容，通常 5~15 秒；规则建议不受影响，可以先看上面"
+                  />
                 ) : (
                   <>
                     {ideas?.posts?.length ? (
@@ -679,6 +725,17 @@ export default function Recommend() {
                 )}
               </div>
             </>
+          ) : outfitError ? (
+            /* 原来失败时这块直接不渲染（走到末尾的 : null），
+               用户点完按钮页面毫无变化，只能自己猜是不是没反应 */
+            <div className="jp-card" style={{ padding: 20 }}>
+              <EmptyState
+                type="error"
+                text="穿搭建议没能生成"
+                hint={outfitError ?? undefined}
+                onRetry={() => void loadOutfit()}
+              />
+            </div>
           ) : null}
         </Space>
       )}

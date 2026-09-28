@@ -1,0 +1,39 @@
+后端 Python：162 个文件 / 22891 行（已排除 venv/htmlcov/pycache）
+按目录：
+  app/services              42 文件    9483 行
+  tests                     35 文件    6508 行
+  app/routers               15 文件    2225 行
+  skills                    13 文件    1244 行
+  app/core                   9 文件     846 行
+  app/models                15 文件     532 行
+  app/tasks                  8 文件     514 行
+  app/schemas               11 文件     458 行
+  app/scripts                4 文件     325 行
+  mcp_server                 3 文件     310 行
+  app                        2 文件     219 行
+  app/db                     4 文件     165 行
+  (root)                     1 文件      62 行
+
+迁移文件：11 个
+  0001_initial.py
+  0002_feedback_reply.py
+  0003_news_source_url.py
+  0004_news_full_text.py
+  0005_trip_notes.py
+  0006_notification.py
+  0007_notification_prefs.py
+  0008_weather_alerts.py
+  0009_life_indices.py
+  0010_notification_categories.py
+  0011_timescale_analytics.py
+
+测试文件：34 个，共 6319 行
+
+MCP 工具（@mcp.tool）：8 个
+本地工具（@tool）：3 个
+多 Agent 领域（Domain(）：5 个
+Skill：4 个
+知识库文档：16 个
+
+路由文件：15 个
+@shared_task/@app.task 数：0

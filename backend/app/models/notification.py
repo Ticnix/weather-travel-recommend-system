@@ -73,3 +73,8 @@ class NotificationPref(Base, TimestampMixin):
     # 默认全开——用户没表达过意愿时，默认值应该是有用的那一边。
     alert_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     itinerary_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    # 行程天气预警（Day 52）：Day 51 的冲突扫描比"出发前 30 分钟提醒"更主动，
+    # 不是所有人都想被提前打扰，所以单独给一个开关。
+    # ⚠️ 这一列必须走 alembic 迁移（见 0012_notification_risk）：
+    # create_all 不会给已存在的表补列。
+    risk_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)

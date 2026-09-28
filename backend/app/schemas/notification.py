@@ -39,3 +39,4 @@ class NotificationPrefsIn(BaseModel):
     morning_hour: int | None = Field(None, ge=5, le=22)
     alert_enabled: bool | None = None
     itinerary_enabled: bool | None = None
+    risk_enabled: bool | None = None

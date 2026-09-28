@@ -1,0 +1,26 @@
+docs_dir=knowledge_base chunk_size=300 overlap=50
+total_chunks=33
+documents=16
+chunk_len min=76 max=299 avg=213
+  guangzhou_climate.md	chunks=2	title=广州气候特点与最佳出行季节
+  guangzhou_food.md	chunks=2	title=广州地道美食指南
+  guangzhou_history_culture.md	chunks=2	title=广州历史文化与广府风情
+  guangzhou_hotels.md	chunks=2	title=广州住宿与酒店选择指南
+  guangzhou_itinerary.md	chunks=2	title=广州经典旅游行程规划
+  guangzhou_landmarks.md	chunks=2	title=广州必游景点推荐
+  guangzhou_more_landmarks.md	chunks=2	title=广州更多值得一游的景点
+  guangzhou_nightlife.md	chunks=2	title=广州夜生活体验指南
+  guangzhou_shopping.md	chunks=2	title=广州热门商圈与购物指南
+  guangzhou_transport.md	chunks=2	title=广州交通出行指南
+  outfit_advice.md	chunks=2	title=广州旅行穿搭建议
+  seasonal_travel_tips.md	chunks=2	title=四季出行实用小贴士
+  weather_codes.md	chunks=3	title=气象常识：天气符号与 WMO 编码对照
+  weather_forecast_basics.md	chunks=2	title=气象预报基础与常用概念
+  weather_outfit_matching.md	chunks=2	title=天气与穿衣搭配对照建议
+  weather_travel_planning.md	chunks=2	title=天气与出行规划建议
+--- top5 sample ---
+  [guangzhou_climate.md#0] 258字 :: '# 广州气候特点与最佳出行季节\n\n## 广州气候概述\n广州地处亚热带沿海，属于典型的亚热带季风气候。全年温暖湿润，雨量充'
+  [guangzhou_climate.md#1] 217字 :: '## 秋季（10-11月）\n秋季是广州最舒适的季节，气温适宜，约 22-28℃，秋高气爽，降水较少，适合各类户外活动和观'
+  [guangzhou_food.md#0] 281字 :: '# 广州地道美食指南\n\n## 广式早茶\n广式早茶是广州饮食文化的代表，以虾饺、烧卖、肠粉、凤爪、糯米鸡等点心著称。喝早茶'
+  [guangzhou_food.md#1] 127字 :: '## 烧腊\n广州烧腊包括烧鹅、烧鸭、叉烧等，色泽金黄，皮脆肉嫩，香气扑鼻。烧腊饭是最常见的工作餐选择，配以秘制酱汁风味更'
+  [guangzhou_history_culture.md#0] 249字 :: '# 广州历史文化与广府风情\n\n## 岭南文化\n广州是岭南文化的中心，广府文化底蕴深厚，体现在建筑、饮食、语言、戏曲等多个'

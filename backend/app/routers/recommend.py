@@ -8,10 +8,11 @@
 from fastapi import APIRouter, Query
 
 from app.core.cache import cached
+from app.core.config import settings
 from app.core.deps import CurrentUser
 from app.core.response import success
 from app.schemas.itinerary import PlanRequest
-from app.services import outfit_inspiration
+from app.services import itinerary_risk, outfit_inspiration
 from app.services.weather_service import fetch_weather
 from skills.itinerary_planner.scripts import planner
 from skills.outfit_recommend.scripts import outfit_engine
@@ -128,3 +129,62 @@ async def plan_trip(payload: PlanRequest, current: CurrentUser) -> dict:
     """
     result = await planner.generate(payload.query)
     return success(result)
+
+
+_SEVERE_HINT = ("雷", "大风", "沙尘", "冰雹", "暴雨")
+
+
+def _best_days_reason(day) -> str:
+    """与 score_day 的排除规则一一对应：不合适的日子要能说出为什么。"""
+    desc = (getattr(day, "weather_desc", None) or "").strip()
+    precip = getattr(day, "precipitation_sum", None) or 0
+    tmax = getattr(day, "temp_max", None)
+    tmin = getattr(day, "temp_min", None)
+    if any(w in desc for w in _SEVERE_HINT):
+        return f"天气不稳（{desc or '强对流'}），不宜户外"
+    if precip >= settings.RAIN_ALERT_MM:
+        return f"降水约 {precip:g}mm，大概率淋雨"
+    if tmax is not None and tmax >= settings.HEAT_ALERT_C:
+        return f"最高 {tmax:g}℃，高温时段不宜户外"
+    if tmax is None or tmin is None:
+        return "当天预报数据不全，无法评估"
+    return "温度或降水条件一般"
+
+
+@router.get("/best-days", response_model=dict)
+async def best_days(
+    current: CurrentUser,
+    location: str = Query("gz", max_length=20),
+    days: int = Query(7, ge=1, le=7),
+) -> dict:
+    """未来 days 天里哪几天适合出行（按适配度从高到低）。
+
+    复用 itinerary_risk.score_day（与行程风险页同一套打分）；
+    不合适的日子**仍返回**并带 reason——"为什么不行"比悄悄消失有用。
+    必须用 fetch_weather().daily（DailyForecast 才有 temp_max 等字段），
+    WeatherHistory 表行没有这些字段，score_day 会把每天都判"数据不全"。
+    """
+    bundle = await fetch_weather(None)
+    rows = bundle.daily[:days]
+    items = []
+    for day in rows:
+        score = itinerary_risk.score_day(day)
+        items.append(
+            {
+                "date": day.date,
+                "suitable": score is not None,
+                "score": score,
+                "weather_desc": (getattr(day, "weather_desc", None) or "").strip(),
+                "temp_min": getattr(day, "temp_min", None),
+                "temp_max": getattr(day, "temp_max", None),
+                "reason": None if score is not None else _best_days_reason(day),
+            }
+        )
+    items.sort(key=lambda x: (0, x["score"]) if x["suitable"] else (1, 0))
+    return success(
+        {
+            "items": items,
+            "location_code": location,
+            "suitable_total": sum(1 for x in items if x["suitable"]),
+        }
+    )

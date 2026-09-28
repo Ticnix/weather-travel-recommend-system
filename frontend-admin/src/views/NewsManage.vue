@@ -148,7 +148,13 @@ onMounted(load)
       </el-form-item>
     </el-form>
 
-    <el-table v-loading="loading" :data="rows" border stripe>
+    <el-table
+      v-loading="loading"
+      element-loading-text="正在加载资讯列表…"
+      :data="rows"
+      border
+      stripe
+    >
       <el-table-column type="index" width="50" />
       <el-table-column prop="title" label="标题" min-width="220" show-overflow-tooltip />
       <el-table-column label="类型" width="100">

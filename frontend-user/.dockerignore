@@ -3,3 +3,9 @@ dist
 .git
 .vscode
 *.log
+# 测试产物：e2e 录像/截图能到几百 MB，不排除的话每次构建都要把它们
+# 打包上传（实测 600MB、构建 30 分钟并频繁超时失败）
+e2e-results
+playwright-report
+test-results
+coverage

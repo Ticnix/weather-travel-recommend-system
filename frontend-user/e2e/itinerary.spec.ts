@@ -5,6 +5,20 @@ import { clearItinerary, prepareLoggedIn } from './helpers'
 // 标题固定带 jp-serif 类，用它限定
 const pageTitle = (page: Page) => page.locator('.jp-serif', { hasText: '我的行程' })
 
+// 行程现在是「日期分组卡 + 时间轴行」，一条行程不再是独立卡片，
+// 所以按行上的 data-itinerary-id 定位（那个属性只有行有）
+const itineraryRow = (page: Page, title: string) =>
+  page.locator('[data-itinerary-id]').filter({ hasText: title })
+
+/** 开始时间改成了 TimePicker：不是文本框填充，而是选中输入框后键入时间再回车确认 */
+async function pickStartTime(page: Page, value: string) {
+  const input = page.getByPlaceholder('选择开始时间')
+  await input.click()
+  await input.fill(value)
+  await page.keyboard.press('Enter')
+  await page.keyboard.press('Escape')
+}
+
 /**
  * 核心路径 ③：登录 → 新增行程 → 编辑 → 删除。
  *
@@ -24,7 +38,7 @@ test.describe('我的行程', () => {
     await page.getByPlaceholder('如：迪士尼一日游').fill(title)
     await page.getByPlaceholder('选择日期').fill('2026-09-25')
     await page.keyboard.press('Enter')
-    await page.getByPlaceholder('如：09:00').fill('09:00')
+    await pickStartTime(page, '09:00')
     await page.getByPlaceholder('如：上海迪士尼（会据此查询当地天气）').fill('白云山')
     await page.getByPlaceholder('如：游玩 / 爬山 / 逛街').fill('爬山')
 
@@ -49,9 +63,8 @@ test.describe('我的行程', () => {
     await page.getByRole('button', { name: '保 存' }).click()
     await expect(page.getByText(title)).toBeVisible({ timeout: 15_000 })
 
-    // 点击该条行程的「编辑」按钮（同一条卡片内的第一个图标按钮）
-    const card = page.locator('.jp-card').filter({ hasText: title })
-    await card.getByRole('button').first().click()
+    // 点击该条行程的「编辑」按钮（同一行内的第一个按钮）
+    await itineraryRow(page, title).getByRole('button').first().click()
 
     const newTitle = `${title}-已改`
     await page.getByPlaceholder('如：迪士尼一日游').fill(newTitle)
@@ -76,9 +89,8 @@ test.describe('我的行程', () => {
     await page.getByRole('button', { name: '保 存' }).click()
     await expect(page.getByText(title)).toBeVisible({ timeout: 15_000 })
 
-    // 删除：同一卡片里最后一个按钮是删除，点击后需在 Popconfirm 里确认
-    const card = page.locator('.jp-card').filter({ hasText: title })
-    await card.getByRole('button').last().click()
+    // 删除：同一行里最后一个按钮是删除，点击后需在 Popconfirm 里确认
+    await itineraryRow(page, title).getByRole('button').last().click()
     await page.getByRole('button', { name: '确 定' }).click()
 
     await expect(page.getByText(title)).toBeHidden({ timeout: 15_000 })

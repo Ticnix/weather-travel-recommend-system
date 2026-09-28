@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Button, Space, Typography } from 'antd'
 import { CloseOutlined, DownloadOutlined } from '@ant-design/icons'
+import { useIsMobile } from '../utils/useIsMobile'
 
 const { Text } = Typography
 
@@ -21,6 +22,7 @@ const DISMISS_KEY = 'wt_pwa_install_dismissed'
  * - iOS Safari：没有 beforeinstallprompt，只能给「分享 → 添加到主屏幕」的文字指引
  */
 export default function InstallPrompt() {
+  const isMobile = useIsMobile()
   const [deferred, setDeferred] = useState<BeforeInstallPromptEvent | null>(null)
   const [visible, setVisible] = useState(false)
   const [iosHint, setIosHint] = useState(false)
@@ -87,10 +89,15 @@ export default function InstallPrompt() {
         flexWrap: 'wrap',
       }}
     >
-      <Text style={{ flex: 1, minWidth: 220, fontSize: 13 }}>
+      {/* 手机上这句话会占两三行、把按钮挤下去，所以换成短句 */}
+      <Text style={{ flex: 1, minWidth: isMobile ? 170 : 220, fontSize: isMobile ? 12 : 13 }}>
         {iosHint
-          ? '把「天气助手」装到桌面：点底部「分享」按钮 → 选择「添加到主屏幕」'
-          : '把「天气助手」装到桌面，打开更快、断网也能看天气'}
+          ? isMobile
+            ? '装到桌面：底部「分享」→「添加到主屏幕」'
+            : '把「天气助手」装到桌面：点底部「分享」按钮 → 选择「添加到主屏幕」'
+          : isMobile
+            ? '装到桌面：打开更快、断网也能看天气'
+            : '把「天气助手」装到桌面，打开更快、断网也能看天气'}
       </Text>
       <Space size={8}>
         {!iosHint && (

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Avatar,
@@ -21,7 +21,7 @@ import {
   ClockCircleOutlined,
   CommentOutlined,
   CalendarOutlined,
-  EnvironmentOutlined,
+  BellOutlined,
 } from '@ant-design/icons'
 import { listMyFeedback, type FeedbackItem } from '../api/feedback'
 import { listItinerary, type ItineraryItem } from '../api/itinerary'
@@ -32,8 +32,10 @@ import {
   isLoggedIn,
   type AuthUser,
 } from '../api/auth'
-import BodyPreferenceSetting from '../components/BodyPreferenceSetting'
-import NotificationSettings from '../components/NotificationSettings'
+import LoadingState from '../components/LoadingState'
+import EmptyState from '../components/EmptyState'
+import MapLink from '../components/MapLink'
+import PreferenceSettings from '../components/PreferenceSettings'
 
 const { Title, Paragraph, Text } = Typography
 
@@ -51,27 +53,50 @@ export default function Profile() {
   const [itinerary, setItinerary] = useState<ItineraryItem[]>([])
   const [loading, setLoading] = useState(true)
   const [loggingOut, setLoggingOut] = useState(false)
+  // 反馈与行程各自的 catch 原来只是把列表置空，
+  // 页面于是显示"暂无反馈记录/还没有行程安排"——把"没取到"说成了"你没有"
+  const [failed, setFailed] = useState(false)
 
   const loggedIn = isLoggedIn()
 
-  useEffect(() => {
+  const load = useCallback(() => {
     if (!loggedIn) {
       setLoading(false)
       return
     }
+    setLoading(true)
+    setFailed(false)
     // 优先用本地存储，再拉最新
     setUser(getStoredUser())
+    let failedAny = false
     Promise.all([
-      fetchMe().then(setUser).catch(() => {}),
+      fetchMe()
+        .then(setUser)
+        .catch(() => {
+          failedAny = true
+        }),
       listMyFeedback()
         .then((res) => setFeedback(res.items))
-        .catch(() => setFeedback([])),
+        .catch(() => {
+          failedAny = true
+          setFeedback([])
+        }),
       // 「我的」页直接展示行程概览，此前这里只是一块写着"开发中"的占位
       listItinerary()
         .then((res) => setItinerary(res.items))
-        .catch(() => setItinerary([])),
-    ]).finally(() => setLoading(false))
+        .catch(() => {
+          failedAny = true
+          setItinerary([])
+        }),
+    ]).finally(() => {
+      setFailed(failedAny)
+      setLoading(false)
+    })
   }, [loggedIn])
+
+  useEffect(() => {
+    load()
+  }, [load])
 
   const handleLogout = () => {
     setLoggingOut(true)
@@ -141,12 +166,9 @@ export default function Profile() {
         </Row>
       </div>
 
-      {/* 体质偏好（仅登录可见）：影响生活指数的排序 */}
-      {loggedIn && (
-        <div className="jp-card" style={{ padding: 24 }}>
-          <BodyPreferenceSetting />
-        </div>
-      )}
+      {/* 偏好设置（体质 + AI 偏好，合并为一张卡，Day 56/合并版）：
+          放页面顶部——它是"系统记住了什么"的入口，比反馈列表更重要 */}
+      {loggedIn && <PreferenceSettings />}
 
       {/* 我的反馈（仅登录可见） */}
       {loggedIn && (
@@ -166,7 +188,14 @@ export default function Profile() {
           </Row>
 
           {loading ? (
-            <Text style={{ color: 'var(--jp-ink-2)' }}>加载中…</Text>
+            <LoadingState compact text="正在加载反馈记录…" hint="同时会拉取最新处理状态" />
+          ) : failed ? (
+            <EmptyState
+              type="error"
+              text="反馈记录没能加载出来"
+              hint="这不代表你没有反馈记录，可能只是这次请求失败"
+              onRetry={load}
+            />
           ) : feedback.length === 0 ? (
             <Empty description="暂无反馈记录" style={{ padding: 30 }} />
           ) : (
@@ -271,7 +300,14 @@ export default function Profile() {
             登录后可查看行程安排，并获得结合天气的出行提醒。
           </Paragraph>
         ) : loading ? (
-          <Text style={{ color: 'var(--jp-ink-2)' }}>加载中…</Text>
+          <LoadingState compact text="正在加载行程列表…" hint="顺带比对每段行程当天的天气" />
+        ) : failed ? (
+          <EmptyState
+            type="error"
+            text="行程没能加载出来"
+            hint="可能只是这次请求失败，点重试即可"
+            onRetry={load}
+          />
         ) : itinerary.length === 0 ? (
           <Empty description="还没有行程安排" style={{ padding: 16 }}>
             <Button type="primary" size="small" onClick={() => navigate('/itinerary')}>
@@ -289,10 +325,12 @@ export default function Profile() {
                   {it.date}
                 </Tag>
                 {it.start_time && <Tag style={{ margin: 0 }}>{it.start_time}</Tag>}
-                <Text style={{ color: 'var(--jp-ink)', fontWeight: 600 }}>{it.title}</Text>
-                {it.location && (
+                <Text style={{ color: 'var(--jp-ink)', fontWeight: 600 }}>
+                  <MapLink name={it.title} />
+                </Text>
+                {it.location && it.location !== it.title && (
                   <Text style={{ color: 'var(--jp-ink-3)', fontSize: 12 }}>
-                    <EnvironmentOutlined /> {it.location}
+                    <MapLink name={it.location} />
                   </Text>
                 )}
               </div>
@@ -306,8 +344,31 @@ export default function Profile() {
         )}
       </div>
 
-      {/* 通知设置（Day 34）：Web Push 订阅授权 / 退订 / 测试 / 发送记录 */}
-      {loggedIn && <NotificationSettings />}
+      {/* 通知设置入口（Day 43）：内容已拆为独立页面，这里只留跳转，不再与「我的」内容混排 */}
+      {loggedIn && (
+        <div className="jp-card" style={{ padding: 24 }}>
+          <Row justify="space-between" align="middle" gutter={16}>
+            <Col flex="1">
+              <div
+                className="jp-serif"
+                style={{ fontSize: 16, fontWeight: 600, color: 'var(--jp-ink)' }}
+              >
+                <BellOutlined /> 通知设置
+              </div>
+              <Text style={{ color: 'var(--jp-ink-2)', fontSize: 13 }}>
+                管理天气推送、邮件提醒，绑定接收邮箱
+              </Text>
+            </Col>
+            <Col>
+              <Button type="primary" onClick={() => navigate('/notifications')}>
+                前往设置
+              </Button>
+            </Col>
+          </Row>
+        </div>
+      )}
+
+      {/* 偏好设置已并入顶部「我的偏好」卡（体质 + AI 偏好合一） */}
     </Space>
   )
 }

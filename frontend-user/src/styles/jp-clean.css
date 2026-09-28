@@ -221,3 +221,171 @@ body {
   border-top: 1px solid var(--jp-border);
   margin: 10px 0;
 }
+
+/* 可点击的地点名（点开高德地图看位置）：
+   默认保持正文观感，只在 hover 时才显眼——行程里地点名很多，
+   全都做成蓝色链接会喧宾夺主 */
+.jp-map-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: inherit;
+  text-decoration: none;
+  border-bottom: 1px dashed rgba(59, 91, 140, 0.45);
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.jp-map-link:hover {
+  color: var(--jp-indigo);
+  border-bottom-color: var(--jp-indigo);
+}
+
+/* 顶部提示区（离线条 / 安装引导）：
+   间距加在**可见的子元素**上，而不是容器上——容器留白会在这两个组件
+   都隐藏之后剩一条空白（用户点了「暂不」就会看到）。 */
+.jp-notice-area {
+  max-width: 1100px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 0 24px;
+}
+
+.jp-notice-area > * {
+  margin-top: 12px;
+}
+
+/* 附件菜单：「+」号展开的「图片 / 文件 / 语音」条目。
+   用 <button> + 自定义样式（而不是 antd Menu），是为了每项都能带一行说明，
+   用户不用猜"这个图标是干嘛的"。 */
+.jp-attach-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+}
+
+.jp-attach-item:hover {
+  background: rgba(59, 91, 140, 0.08);
+}
+
+.jp-attach-item + .jp-attach-item {
+  margin-top: 2px;
+}
+
+/* ============ 移动端适配 ============
+ * 三条原则：
+ * 1. **小屏不是把桌面缩小**，而是减少同时出现的信息：次要说明直接隐藏，
+ *    只留主信息 + 图标。屏幕就那么大，少即是清楚。
+ * 2. **中文在窄容器里会逐字换行**（看起来像竖排），所以窄屏一律把
+ *    多列布局改成单列/换行，绝不让两三个控件硬挤在一行里。
+ * 3. 触控目标不小于 40px；底部导航要避开 iPhone 的 Home 条（safe-area）。
+ *
+ * 说明：页面里大量尺寸是内联样式（媒体查询本来覆盖不了），
+ * 所以这里对少数几个类用 !important 强行收敛——这是让"全局一次改完"
+ * 成本最低的做法，新代码请优先用这些类而不是继续写死内联尺寸。
+ */
+@media (max-width: 767px) {
+  /* 提示区跟页面内容左右对齐（否则手机上 24px 对 12px，看着是歪的） */
+  .jp-notice-area {
+    padding: 0 12px;
+  }
+
+  /* 页面与卡片留白收紧：桌面 28/20px → 手机 14/12px */
+  .jp-page {
+    padding: 14px 12px 24px !important;
+  }
+
+  .jp-card {
+    padding: 14px !important;
+    border-radius: 14px;
+  }
+
+  /* 大标题不再沿用桌面尺寸 */
+  .jp-title-xl {
+    font-size: 16px !important;
+  }
+
+  .jp-title-lg {
+    font-size: 15px !important;
+  }
+
+  /* 次要说明文字：小屏直接收掉（信息不够时用户自然会点进去） */
+  .jp-hide-mobile {
+    display: none !important;
+  }
+
+  /* 窄屏强制单列：中文不再被挤成"竖排" */
+  .jp-stack-mobile {
+    grid-template-columns: 1fr !important;
+    display: grid !important;
+    gap: 10px !important;
+  }
+
+  /* 触控目标抬到 40px 以上 */
+  .jp-tap {
+    min-height: 40px;
+  }
+
+  /* 页面级卡片间距：桌面 20px 在手机上显得"空得慌"，收到 14px 少滑一屏。
+     只作用于页面根节点的那一层 Stack，不动卡片内部的间距层级 */
+  .jp-page > .ant-space-vertical {
+    gap: 14px !important;
+  }
+}
+
+/* 底部导航：只在窄屏出现 */
+.jp-bottom-nav {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 200;
+  display: flex;
+  background: rgba(255, 253, 249, 0.94);
+  backdrop-filter: blur(12px);
+  border-top: 1px solid var(--jp-border);
+  /* iPhone Home 条安全区：不留的话最后一排会被遮住 */
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.jp-bottom-nav-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 8px 2px 6px;
+  font-size: 11px;
+  line-height: 1.2;
+  color: var(--jp-ink-3);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.jp-bottom-nav-item .anticon {
+  font-size: 19px;
+}
+
+.jp-bottom-nav-item.is-active {
+  color: var(--jp-indigo);
+  font-weight: 600;
+}
+
+/* 有底部导航时内容要留出空间，否则最后一张卡片被压住 */
+.jp-has-bottom-nav {
+  padding-bottom: calc(60px + env(safe-area-inset-bottom));
+}
+
+@media (min-width: 768px) {
+  .jp-bottom-nav,
+  .jp-has-bottom-nav {
+    display: none !important;
+  }
+}

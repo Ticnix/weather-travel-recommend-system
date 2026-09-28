@@ -3,11 +3,11 @@
 输入「想去哪 / 几天 / 偏好」，输出**可直接保存到行程表**的结构化行程。
 
 编排链：
-  1. 解析需求   → 城市 / 天数 / 偏好        parse_request（纯函数）
-  2. 查天气     → 每天是否适合户外          needs_indoor（纯函数）
-  3. 找候选景点 → amap suggest_places       （有 Key 走高德，无 Key 回落内置地标）
-  4. 交 LLM     → 结构化行程                llm_client.ainvoke_json
-  5. 审计并纠正 → 雨天不排户外              audit_plan（纯函数）
+ 1. 解析需求   → 城市 / 区域 / 日期 / 天数 / 偏好   parse_request（纯函数）
+ 2. 查天气     → 每天是否适合户外                  needs_indoor（纯函数）
+ 3. 找候选景点 → amap place/text（按区域取，带所在区）（有 Key 走高德，无 Key 回落内置地标）
+ 4. 交 LLM     → 结构化行程                        llm_client.ainvoke_json
+ 5. 审计并纠正 → 雨天不排户外                      audit_plan（纯函数）
 
 **第 5 步是这里最关键的设计**：不能把「模型会听话」当作正确性依赖。
 提示词里写"雨天不要排户外"只是建议，模型完全可能照排不误。
@@ -29,8 +29,9 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from app.services import amap_client
+from app.services import amap_client, holiday_calendar
 from app.services.city_dict import all_supported_cities, lookup_city
+from app.services.district_dict import area_core, cities_of, match_area
 from app.services.llm_client import ainvoke_json
 from app.services.weather_service import fetch_weather
 
@@ -38,7 +39,9 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_CITY = "广州"
 DEFAULT_DAYS = 2
-MAX_DAYS = 5
+# 上限必须放得下"最长的法定假期"（国庆 7 天、春节 8 天）。
+# 原先是 5，于是"国庆去玩几天"最多只能排 5 天——长假被砍短，用户一眼就看出来。
+MAX_DAYS = 10
 
 # 坏天气判定阈值：降水到这个量、或出现强对流、或高温，都不适合排户外
 RAIN_MM = 5.0
@@ -57,6 +60,9 @@ _CN_DIGITS = {
     "九": 9,
     "十": 10,
 }
+
+# 星期几 → weekday()（周一起算）
+_WEEKDAYS = {"一": 0, "二": 1, "三": 2, "四": 3, "五": 4, "六": 5, "日": 6, "天": 6}
 
 # 偏好关键词 → 规范标签（既用于提示词，也用于候选景点排序）
 PREFERENCE_KEYWORDS: dict[str, tuple[str, ...]] = {
@@ -79,6 +85,10 @@ class PlanItem(BaseModel):
     activity: str = Field(default="", description="活动，如「徒步登山」「午餐」")
     reason: str = Field(default="", description="为什么把它安排在这里（结合天气与偏好）")
     weather_adjusted: bool = Field(default=False, description="是否因天气原因被调整过")
+    # 坐标**不由模型生成**（模型只会编），而是生成后从候选 POI 里按名字反查补上，
+    # 供前端"点地点名 → 打开地图看位置"。查不到就是 None，前端退回按地名搜索。
+    lng: float | None = Field(default=None, description="经度（来自候选 POI，非模型生成）")
+    lat: float | None = Field(default=None, description="纬度（来自候选 POI，非模型生成）")
 
 
 class PlanDay(BaseModel):
@@ -106,6 +116,14 @@ class TripRequest(BaseModel):
     days: int
     preferences: list[str] = Field(default_factory=list)
     city_assumed: bool = False  # 城市是回落默认值推断出来的，前端需提示用户确认
+    # 出发日期（YYYY-MM-DD）：需求里没提日期时为 None，由调用方回落「今天」。
+    # 单独存字段而不是只用在内部计算，是为了让前端能显示"排的是哪天"。
+    start_date: str | None = None
+    date_hint: str | None = None  # 命中的日期原词（如「国庆」），用于向用户说明依据
+    # 需求里写的市辖区（如「南沙区」）：有值时候选景点只在区内取，
+    # 因为"用户写了区却拿到全城行程"是最初实际踩到的坑。
+    area: str | None = None
+    area_hint: str | None = None  # 命中的区域原词（如「南沙」）
 
 
 def _cn_to_int(text: str) -> int | None:
@@ -122,12 +140,84 @@ def _cn_to_int(text: str) -> int | None:
     return _CN_DIGITS.get(text)
 
 
-def parse_days(text: str) -> int:
+def _upcoming(ref: date, month: int, day: int) -> date | None:
+    """把「某月某日」落到不早于 ref 的最近一次（今年过了就算明年）。"""
+    for year in (ref.year, ref.year + 1):
+        try:
+            candidate = date(year, month, day)
+        except ValueError:  # 2 月 30 日这类不存在的日期
+            continue
+        if candidate >= ref:
+            return candidate
+    return None
+
+
+def parse_start_date(text: str, ref: date) -> tuple[date | None, str | None]:
+    """解析出发日期，返回 (日期, 命中的原词)；解析不出返回 (None, None)。
+
+    ref 是「今天」，用它把相对说法（明天/周末/下周）落成具体日期。
+
+    把命中的原词一并返回，是因为「默默换掉用户说的日期」和「默默换掉城市」
+    属于同一类错误：用户写了国庆，就该看到"已按国庆（10-01）排"，
+    而不是拿到一份从今天开始的行程，还以为 AI 没看懂他说的日期。
+    """
+    raw = (text or "").strip()
+    if not raw:
+        return None, None
+
+    for keyword in ("今天", "今日"):
+        if keyword in raw:
+            return ref, keyword
+    if "后天" in raw:
+        return ref + timedelta(days=2), "后天"
+    for keyword in ("明天", "明日"):
+        if keyword in raw:
+            return ref + timedelta(days=1), keyword
+
+    # 周末 → 最近的周六（今天就是周六则从今天算起）
+    saturday_offset = (5 - ref.weekday()) % 7
+    if "下周末" in raw:
+        return ref + timedelta(days=saturday_offset + 7), "下周末"
+    if "周末" in raw:
+        return ref + timedelta(days=saturday_offset), "周末"
+
+    # 下周X / 下个星期X → 先跳到下周一，再按星期几偏移
+    matched = re.search(r"下(?:个)?(?:周|星期)([一二三四五六日天])?", raw)
+    if matched:
+        next_monday = ref + timedelta(days=(7 - ref.weekday()) % 7 or 7)
+        weekday = matched.group(1)
+        if weekday:
+            return next_monday + timedelta(days=_WEEKDAYS[weekday]), matched.group(0)
+        return next_monday, matched.group(0)
+
+    # 明确写了几月几号
+    matched = re.search(r"(\d{1,2})\s*月\s*(\d{1,2})\s*[日号]", raw)
+    if matched:
+        target = _upcoming(ref, int(matched.group(1)), int(matched.group(2)))
+        if target:
+            return target, matched.group(0)
+
+    # 节假日（国庆/中秋/春节…）交给 holiday_calendar：
+    # 农历节日（中秋/春节/端午）无法用固定公历日期表示，只能换算；
+    # 顺带把"今年已过就落到明年"也由它处理。
+    resolved = holiday_calendar.resolve(raw, ref)
+    if resolved:
+        festival, start = resolved
+        return start, festival.name
+
+    return None, None
+
+
+def parse_days(text: str, ref: date | None = None) -> int:
     """从自然语言里解析天数（超过上限按上限截断）。
 
     要同时认「天」和「日」：「三日游」「两日游」是极常见的说法，
     只认「天」的话这些话会被当成没提天数，静默用默认值——
     用户拿到一个 2 天行程却说自己要 3 天，是最容易被忽略的一类错。
+
+    ref 是"今天"，用于判断"只说了某一天"（明天 / 10月1号 / 下周五）。
+    那种情况下天数是 **1 天**：用户说的是"明天给我安排一个行程"，
+    给他排两天等于凭空多塞一天，他只会觉得"它没听懂"。
     """
     if "周末" in text:
         return 2
@@ -141,6 +231,18 @@ def parse_days(text: str) -> int:
         value = _cn_to_int(matched.group(1))
         if value:
             return max(1, min(value, MAX_DAYS))
+
+    # 提了节假日却只说「玩几天」：按这个假期的**法定天数**给（国庆 7 天、五一 5 天、
+    # 中秋 3 天），别把长假排成两天一夜。注意顺序——上面已先认显式天数，
+    # 所以"国庆玩5天"仍是 5 天，用户说了算；也要在下面的"单个日期"之前，
+    # 否则"国庆去玩几天"会被当成只玩一天。
+    holiday = holiday_calendar.holiday_days(text)
+    if holiday:
+        return min(holiday, MAX_DAYS)
+
+    # 只说了某一天、没说玩几天 → 就是一天
+    if ref is not None and parse_start_date(text, ref)[0] is not None:
+        return 1
 
     return DEFAULT_DAYS
 
@@ -170,15 +272,35 @@ def parse_preferences(text: str) -> list[str]:
     ]
 
 
-def parse_request(query: str) -> TripRequest:
-    """把一句自然语言需求解析成结构化请求。"""
+def parse_request(query: str, ref: date | None = None) -> TripRequest:
+    """把一句自然语言需求解析成结构化请求。
+
+    ref 是作为「今天」的参照日，默认取系统当天；显式传入是为了让
+    「国庆」「周末」这类相对日期在测试里可复现（不随运行日期漂移）。
+    """
     text = (query or "").strip()
     city, assumed = parse_city(text)
+
+    matched = match_area(text)
+    area, area_hint = matched if matched else (None, None)
+    if area:
+        # 区名能唯一确定城市时，就不该再说"没听出你想去哪个城市"：
+        # 「去南沙区玩」里的南沙区只属于广州，这已经足够回答城市问题了。
+        owners = cities_of(area)
+        if len(owners) == 1 and owners[0] in all_supported_cities():
+            city, assumed = owners[0], False
+
+    today = ref or date.today()
+    start, hint = parse_start_date(text, today)
     return TripRequest(
         city=city,
-        days=parse_days(text),
+        days=parse_days(text, today),
         preferences=parse_preferences(text),
         city_assumed=assumed,
+        start_date=start.isoformat() if start else None,
+        date_hint=hint,
+        area=area,
+        area_hint=area_hint,
     )
 
 
@@ -253,31 +375,124 @@ def is_outdoor(*texts: str) -> bool:
     return True
 
 
-async def collect_candidates(
-    city: str, preferences: list[str], limit: int = 12
-) -> dict[str, list[str]]:
-    """收集候选景点，分成室内 / 户外两组。
+# 偏好标签 → 高德 POI 类型码；没对应的按"风景名胜"搜（博物馆/公园/古镇都归在里面）
+_POI_TYPES_BY_PREF: dict[str, str] = {
+    "美食": amap_client.POI_FOOD,
+    "购物": amap_client.POI_SHOPPING,
+}
+_POI_TYPE_DEFAULT = amap_client.POI_SCENERY
 
-    数据来源优先高德 inputtips；无 Key 时 amap_client 会回落内置地标库，
-    再拿不到就用一组通用兜底——保证 LLM 至少有东西可排，不至于空手而归。
+# 单个关键词取多少条 POI：区域过滤会筛掉一部分，多取一点才够用
+_POI_PER_QUERY = 10
+
+
+def _search_pairs(categories: list[str], core: str | None) -> list[tuple[str, str]]:
+    """生成 (关键词, 类型码) 检索组合。
+
+    限定区域时关键词用**区名本身**，而不是「南沙景点」这类拼接词：
+    高德的关键词是字面匹配，拼接词只会命中少数小地方（实测「南沙景点」
+    返回的全是东涌的村口公园），而「南沙」+ 类型过滤能稳定拿到
+    天后宫、水鸟世界、湿地公园这些真正的景点。
     """
-    keywords = ["景点", *preferences]
-    names: list[str] = []
-    for keyword in keywords:
+    types_of = [_POI_TYPES_BY_PREF.get(category, _POI_TYPE_DEFAULT) for category in categories]
+    if core:
+        # 关键词都是区名，只有类型不同，去重后逐个类型查一次
+        return [(core, types) for types in dict.fromkeys(types_of)]
+    return list(zip(categories, types_of))
+
+
+def _poi_in_area(poi: dict[str, Any], core: str) -> bool:
+    """判断 POI 是否落在目标区域内。
+
+    只看 adname 不够：搜「东涌镇」时 adname 只有"南沙区"，镇名藏在 address 里；
+    但**不能看名称**——「蒙奇D寿司店(南沙店)」这种店名带"南沙"的分店可能开在市区的
+    另一个区，按名字匹配会把区外地点放进来，而"说了南沙却排到越秀"正是要修的问题。
+    """
+    located = f"{poi.get('district', '')}{poi.get('address', '')}"
+    if located:
+        return core in located
+    return core in poi.get("name", "")  # 少数 POI 没有行政区信息时只能退回看名称
+
+
+# 明显不是"可安排的地点"的 POI 分类前缀（住宅小区、公司、生活服务网点…）
+_POI_SKIP_TYPE_PREFIXES = ("商务住宅", "公司企业", "生活服务", "政府机构", "地名地址")
+
+# 名称里带这些词的也不是能"安排去玩"的地方。（少数真叫"XX民居"的景点会被一起滤掉，
+# 但宁可少一个候选，也不要出现"行程：莲溪大街78号民居"这种让用户发愣的安排。）
+_POI_SKIP_NAME_KEYWORDS = ("民居", "小区", "公寓", "宿舍", "办事处", "批发", "建材", "五金")
+
+
+def _is_place_of_interest(poi: dict[str, Any]) -> bool:
+    """过滤掉检索结果里的非景点（住宅区/公司/办事处/民居）。
+
+    高德的"风景名胜"大类里混着「XX民居」「XX雅苑」这类条目，
+    直接塞给模型就会排进行程，用户看到"行程：莲溪大街78号民居"只会觉得莫名其妙。
+    分类过滤挡不住名字型的噪音（它们被归到了"风景名胜"下），所以名称也要看一眼。
+    """
+    if (poi.get("type") or "").startswith(_POI_SKIP_TYPE_PREFIXES):
+        return False
+    return not any(word in poi.get("name", "") for word in _POI_SKIP_NAME_KEYWORDS)
+
+
+async def _search_pois(
+    city: str, categories: list[str], core: str | None
+) -> list[dict[str, Any]]:
+    """按 (关键词, 类型) 组合检索并合并候选 POI。"""
+    found: list[dict[str, Any]] = []
+    for keyword, types in _search_pairs(categories, core):
         try:
-            places = await amap_client.suggest_places(keyword, city=city, limit=6)
+            pois = await amap_client.search_pois(
+                keyword, city=city, types=types, limit=_POI_PER_QUERY
+            )
         except Exception as exc:  # noqa: BLE001 检索失败不该让整个排程挂掉
             logger.warning("景点检索失败 keyword=%s: %s", keyword, exc)
             continue
-        names.extend(place.get("name", "") for place in places if place.get("name"))
+        if core:
+            pois = [poi for poi in pois if _poi_in_area(poi, core)]
+        found.extend(poi for poi in pois if _is_place_of_interest(poi))
+    return found
 
-    unique = list(dict.fromkeys(name for name in names if name))
+
+async def collect_candidates(
+    city: str, preferences: list[str], area: str | None = None, limit: int = 15
+) -> dict[str, Any]:
+    """收集候选景点，分成室内 / 户外两组。
+
+    数据来源优先高德 POI 检索；无 Key 时 amap_client 会回落内置地标库，
+    再拿不到就用一组通用兜底——保证 LLM 至少有东西可排，不至于空手而归。
+
+    指定区域（「南沙区」）时只取该区内的地点：用户写了区，就不该收到
+    一份越秀/北京路的行程。区内确实搜不到时回落全城，并用
+    area_matched=False 让前端把这件事说出来，而不是悄悄换地方。
+    """
+    core = area_core(area) if area else None
+    categories = list(dict.fromkeys(["景点", *preferences]))
+
+    pois = await _search_pois(city, categories, core)
+    area_matched = bool(core)
+    if core and not pois:
+        logger.info("区域 %s 内没检索到候选景点，回落 %s 全城", area, city)
+        pois = await _search_pois(city, categories, None)
+        area_matched = False
+
+    unique = list(dict.fromkeys(poi["name"] for poi in pois if poi.get("name")))
     if not unique:
         unique = [f"{city}博物馆", f"{city}人民公园"]
 
     indoor = [name for name in unique if not is_outdoor(name)]
     outdoor = [name for name in unique if is_outdoor(name)]
-    return {"indoor": indoor[:limit], "outdoor": outdoor[:limit], "all": unique[:limit]}
+    return {
+        "indoor": indoor[:limit],
+        "outdoor": outdoor[:limit],
+        "all": unique[:limit],
+        "area_matched": area_matched,
+        # 名字 → 坐标：生成行程后按名字反查，给前端"点开地图"用
+        "coords": {
+            poi["name"]: {"lng": poi["lng"], "lat": poi["lat"]}
+            for poi in pois
+            if poi.get("name") and poi.get("lng") is not None
+        },
+    }
 
 
 def audit_plan(
@@ -333,6 +548,7 @@ PLAN_SYSTEM_PROMPT = """你是本地行程规划师，负责把「日期 + 天�
 4. 只使用我给出的候选地点，**不要编造不存在的地方或餐厅**
 5. 结合用户偏好选点：偏好自然就多排公园山地，偏好文化就多排展馆古迹
 6. 饭点安排用餐（可写「XX 附近用餐」，不必编造店名）
+7. 指定了「区域」时，所有地点都必须落在该区域内——宁可少排几项，也不要跨区
 """
 
 
@@ -340,18 +556,21 @@ def _build_prompt(
     request: TripRequest,
     dates: list[str],
     weather_lines: list[str],
-    candidates: dict[str, list[str]],
+    candidates: dict[str, Any],
 ) -> str:
     """拼装排程提示词：把「约束」交给模型，把「校验」留给自己。"""
     preferences = "、".join(request.preferences) if request.preferences else "无特别偏好"
     weather_text = "\n".join(weather_lines) if weather_lines else "（天气数据不可用）"
     indoor = "、".join(candidates["indoor"]) if candidates["indoor"] else "（无）"
     outdoor = "、".join(candidates["outdoor"]) if candidates["outdoor"] else "（无）"
+    # 区域是硬约束：候选景点已按区取好，这里再写一遍是防止模型自己"加戏"跨区
+    area_line = f"区域：{request.area}（所有地点必须在{request.area}内）\n" if request.area else ""
+    holiday_note = f"（{request.date_hint}假期）" if request.date_hint else ""
 
     return f"""请为以下需求排一份 {request.days} 天行程。
 
 城市：{request.city}
-日期：{"、".join(dates)}
+{area_line}日期：{"、".join(dates)}{holiday_note}
 用户偏好：{preferences}
 
 逐日天气：
@@ -402,14 +621,82 @@ async def _collect_weather(
     return weather_by_date, lines
 
 
+def weather_hint(dates: list[str], weather_by_date: dict[str, dict[str, Any]]) -> str | None:
+    """日期超出预报范围时，明确告知「本次没有天气约束」。
+
+    天气预报只有未来 7 天左右，而用户很可能排的是国庆这种远期行程。
+    不说明的话，他看到某天没有天气标签会以为功能坏了；
+    而「没做雨天规避」和「排了户外但预报是晴天」是两件完全不同的事，
+    不能都表现为"那一栏空着"。
+    """
+    if not dates:
+        return None
+    missing = [date_str for date_str in dates if date_str not in weather_by_date]
+    if not missing:
+        return None
+    if len(missing) == len(dates):
+        return "所选日期暂无天气预报（超出预报范围），本次未做雨天规避，出行前请再确认天气"
+    return f"{'、'.join(missing)} 暂无天气预报，这些日期未做雨天规避"
+
+
+def attach_coordinates(plan: TripPlan, coords: dict[str, dict[str, float]]) -> int:
+    """给行程条目补上坐标，返回补上的条数（前端据此决定能不能直接定位）。
+
+    坐标**不交给模型生成**：模型编出来的经纬度看起来很像真的，但错得离谱，
+    而"点开地图发现位置不对"比"点了没反应"更伤信任。
+    这里改成从候选 POI 里按名字反查——提示词本就要求只用候选地点，
+    所以多数条目能命中；命不中的（如「XX 附近用餐」）留空，
+    前端退回"按地名搜索"，绝不猜一个坐标出来。
+    """
+    filled = 0
+    for day in plan.plan:
+        for item in day.items:
+            point = coords.get(item.title)
+            if point is None:
+                # 模型有时会保留主干、改掉括号里的店名后缀，允许包含匹配兜一下
+                point = next(
+                    (
+                        value
+                        for name, value in coords.items()
+                        if name and (name in item.title or item.title in name)
+                    ),
+                    None,
+                )
+            if point is None:
+                continue
+            item.lng = float(point["lng"])
+            item.lat = float(point["lat"])
+            filled += 1
+    return filled
+
+
+def _area_note(request: TripRequest, candidates: dict[str, Any]) -> str | None:
+    """区域没检索到候选地点时的说明；正常命中返回 None。
+
+    和 weather_hint 同一个理由：**"没做到"必须说出来**。
+    用户写了南沙区，如果最后拿到的是全城行程又不加说明，
+    他只会得出"我说了跟没说一样"的结论。
+    """
+    if not request.area or candidates.get("area_matched", True):
+        return None
+    return (
+        f"「{request.area}」内没检索到候选地点，本次已按{request.city}全城规划——"
+        f"出行前请再核对地点是否都在{request.area}"
+    )
+
+
 async def generate(query: str, today: date | None = None) -> dict[str, Any]:
     """完整排程链路：解析 → 天气 → 候选 → LLM → 审计。"""
-    request = parse_request(query)
-    start = today or date.today()
+    ref = today or date.today()
+    request = parse_request(query, ref)
+    # 用户写了「国庆」「周末」就按那个日期排，没写才从今天起算。
+    # 这里原先直接写 date.today()，于是"国庆去广州"排出来的还是今明两天。
+    start = date.fromisoformat(request.start_date) if request.start_date else ref
     dates = [(start + timedelta(days=offset)).isoformat() for offset in range(request.days)]
 
     weather_by_date, weather_lines = await _collect_weather(request.city, dates)
-    candidates = await collect_candidates(request.city, request.preferences)
+    # 区域一起传下去：候选景点只在区内取（「南沙区」不该排到越秀）
+    candidates = await collect_candidates(request.city, request.preferences, request.area)
 
     plan = await ainvoke_json(
         _build_prompt(request, dates, weather_lines, candidates),
@@ -420,10 +707,15 @@ async def generate(query: str, today: date | None = None) -> dict[str, Any]:
     # 审计兜底：模型可能没听「雨天不排户外」，这里逐条改掉
     plan, adjustments = audit_plan(plan, weather_by_date, candidates["indoor"])
 
+    # 坐标放在审计之后补：审计会把户外项换成室内候选，换完再反查坐标才对得上
+    attach_coordinates(plan, candidates.get("coords", {}))
+
     return {
         "request": request.model_dump(),
         "dates": dates,
         "weather": weather_by_date,
+        "weather_hint": weather_hint(dates, weather_by_date),
+        "area_note": _area_note(request, candidates),
         "plan": plan.model_dump(),
         "adjustments": adjustments,
     }

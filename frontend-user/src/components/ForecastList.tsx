@@ -1,7 +1,10 @@
-import { Button, Segmented, Skeleton, Space, Typography } from 'antd'
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { getForecast, getHistory, type ForecastDay } from '../api/weather'
+import { Button, Segmented, Space, Typography } from 'antd'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { getForecast, getHistory, getLocalWeather, type ForecastDay } from '../api/weather'
 import { getWeatherVisual, formatWeekday } from '../utils/weather'
+import { useLocalLocation } from '../utils/localLocation'
+import LoadingState from './LoadingState'
+import EmptyState from './EmptyState'
 
 const { Text } = Typography
 
@@ -37,21 +40,68 @@ export default function ForecastList() {
   const [history, setHistory] = useState<ForecastDay[]>([])
   const [forecast, setForecast] = useState<ForecastDay[]>([])
   const [loading, setLoading] = useState(true)
+  const [failed, setFailed] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
+  const local = useLocalLocation()
+  // 区级模式：数据源换成"这个区"的天气。
+  // 区级没有历史时序（区级是按需取的），所以历史区间在区级模式下不可用
+  const districtMode = Boolean(local?.district)
+  // 区级取数失败、已退回城市预报
+  const [localFailed, setLocalFailed] = useState(false)
 
-  useEffect(() => {
+  const load = useCallback(() => {
     setLoading(true)
+    setFailed(false)
+
+    if (districtMode) {
+      getLocalWeather({ district: local?.district })
+        .then((res) => {
+          setLocalFailed(false)
+          setHistory([])
+          setForecast(res.forecast ?? [])
+        })
+        .catch(() =>
+          // 区级取不到就退回城市预报（整块时间轴变错误态太粗暴），
+          // 但要记下"现在显示的是城市数据"，不能让用户以为是本区预报
+          getForecast()
+            .then((r) => {
+              setLocalFailed(true)
+              setHistory([])
+              setForecast(r.items ?? [])
+            })
+            .catch(() => {
+              setHistory([])
+              setForecast([])
+              setFailed(true)
+            }),
+        )
+        .finally(() => setLoading(false))
+      return
+    }
+
     Promise.all([
       // 取足够多的历史（最多 31 天）供前端按窗口截取
       getHistory(31).then((r) => setHistory(r.items ?? [])),
       getForecast().then((r) => setForecast(r.items ?? [])),
     ])
       .catch(() => {
+        // 两条都失败时，时间轴只会渲染一排「—」的灰卡，
+        // 用户完全看不出是"没查到"还是"今天没有天气"——所以记下失败状态
         setHistory([])
         setForecast([])
+        setFailed(true)
       })
       .finally(() => setLoading(false))
-  }, [])
+  }, [districtMode, local?.district])
+
+  useEffect(() => {
+    load()
+  }, [load])
+
+  // 区级模式下没有历史数据，落到「未来 7 天」，免得用户看到一排空卡
+  useEffect(() => {
+    if (districtMode) setRange('future')
+  }, [districtMode])
 
   // 合并：生成连续日期轴（过去 → 今天 → 未来），用历史实测 + 未来预报填充
   const merged = useMemo(() => {
@@ -97,13 +147,38 @@ export default function ForecastList() {
     el.scrollTo({ left: Math.max(0, todayCard.offsetLeft - 8), behavior: 'smooth' })
   }, [merged])
 
+  const header = (
+    <div
+      className="jp-serif"
+      style={{ fontSize: 16, fontWeight: 600, marginBottom: 16, color: 'var(--jp-ink)' }}
+    >
+      天气时间轴
+    </div>
+  )
+
   if (loading) {
     return (
       <div className="jp-card" style={{ padding: 24 }}>
-        <div className="jp-serif" style={{ fontSize: 16, fontWeight: 600, marginBottom: 16, color: 'var(--jp-ink)' }}>
-          天气时间轴
-        </div>
-        <Skeleton active />
+        {header}
+        {/* 不写「天气时间轴」：那是上面的标题词，重复出现会让按子串匹配的断言命中两个元素 */}
+        <LoadingState
+          text="正在加载历史实况与未来预报…"
+          hint="同时拉取近 31 天实测与未来 7 天预报，通常 1~3 秒"
+        />
+      </div>
+    )
+  }
+
+  if (failed) {
+    return (
+      <div className="jp-card" style={{ padding: 24 }}>
+        {header}
+        <EmptyState
+          type="error"
+          text="天气数据没能取到"
+          hint="实测与预报接口这次都没有返回内容，稍后重试即可"
+          onRetry={load}
+        />
       </div>
     )
   }
@@ -143,12 +218,33 @@ export default function ForecastList() {
             onChange={(v) => setRange(v as RangeKey)}
             options={[
               { label: '未来 7 天', value: 'future' },
-              { label: '近 14 天', value: 'recent' },
-              { label: '近 30 天', value: 'past' },
+              // 区级按需取数、没有历史时序，所以这两个区间在区级模式下不提供
+              ...(districtMode
+                ? []
+                : [
+                    { label: '近 14 天', value: 'recent' },
+                    { label: '近 30 天', value: 'past' },
+                  ]),
             ]}
           />
         </Space>
       </div>
+
+      {/* 区级模式要说明数据边界：历史区间看不了，不是坏了 */}
+      {districtMode && (
+        <div
+          style={{
+            paddingLeft: 8,
+            marginBottom: 10,
+            fontSize: 12,
+            color: localFailed ? 'var(--jp-vermilion)' : 'var(--jp-ink-3)',
+          }}
+        >
+          {localFailed
+            ? '区级预报这次没取到，暂时显示的是城市预报'
+            : `当前按「${local?.label}」取数，区级只提供未来 7 天；想看历史实况请切回城市`}
+        </div>
+      )}
 
       {/* 横向滑动容器（显示滚动条） */}
       <div

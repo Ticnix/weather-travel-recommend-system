@@ -1,11 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Button, Col, Empty, Row, Skeleton, Space, Tag, Typography } from 'antd'
+import { Button, Col, Empty, Row, Space, Tag, Typography, message } from 'antd'
 import {
   CalendarOutlined,
   ClockCircleOutlined,
   CommentOutlined,
   CompassOutlined,
-  EnvironmentOutlined,
   MessageOutlined,
   RightOutlined,
   ThunderboltOutlined,
@@ -13,8 +12,13 @@ import {
 import { useNavigate } from 'react-router-dom'
 import WeatherHero from '../components/WeatherHero'
 import ForecastList from '../components/ForecastList'
+import LoadingState from '../components/LoadingState'
+import EmptyState from '../components/EmptyState'
+import HourlyChart from '../components/HourlyChart'
+import MapLink from '../components/MapLink'
 import { getDashboard, type HomeDashboard } from '../api/home'
 import { isLoggedIn } from '../api/auth'
+import { useIsMobile } from '../utils/useIsMobile'
 
 const { Paragraph, Text } = Typography
 
@@ -38,14 +42,20 @@ export default function Home() {
   const navigate = useNavigate()
   const [dash, setDash] = useState<HomeDashboard | null>(null)
   const [loading, setLoading] = useState(true)
+  // 加载失败必须和"确实没数据"分开：否则用户看到"暂无提醒"会以为一切正常，
+  // 而实际上是接口挂了（这正是"功能没反应却不给提示"的典型观感）
+  const [failed, setFailed] = useState(false)
   const loggedIn = isLoggedIn()
+  const isMobile = useIsMobile()
 
   const load = useCallback(async () => {
     setLoading(true)
+    setFailed(false)
     try {
       setDash(await getDashboard())
     } catch {
       setDash(null)
+      setFailed(true)
     } finally {
       setLoading(false)
     }
@@ -61,6 +71,19 @@ export default function Home() {
   const indices = dash?.indices ?? []
   // 默认只展示最相关的 4 个指数，避免 16 项铺满首页
   const [showAllIndices, setShowAllIndices] = useState(false)
+  // 语音播报状态：没有这个反馈，"点了没声音"和"根本没播"用户分不清
+  const [speaking, setSpeaking] = useState(false)
+
+  // 三块内容都来自同一个接口，失败时统一给一份带重试的说明，
+  // 而不是各自显示"暂无…"——那等于把"接口挂了"说成"你没有数据"
+  const failedHint = (
+    <EmptyState
+      type="error"
+      text="数据加载失败"
+      hint="今日提醒 / 穿搭 / 近期行程来自同一个接口，这一次没取到"
+      onRetry={() => void load()}
+    />
+  )
 
   return (
     <Space direction="vertical" size={20} style={{ width: '100%' }}>
@@ -69,13 +92,83 @@ export default function Home() {
 
       {/* ===== 今日提醒（结合天气自动生成，无需跳转） ===== */}
       <div className="jp-card" style={{ padding: 20 }}>
-        <div style={{ marginBottom: 12 }}>
+        <div style={{ marginBottom: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span className="jp-serif" style={{ fontSize: 16, fontWeight: 600, color: 'var(--jp-ink)' }}>
             <ThunderboltOutlined style={{ color: 'var(--jp-amber)' }} /> 今日提醒
           </span>
+          {/* 语音播报（Day 61）：browser speechSynthesis，零成本零后端；
+              出门前的场景是"手上有东西、没空看屏幕" */}
+          {!loading && !failed && (
+            <Button
+              size="small"
+              danger={speaking}
+              onClick={() => {
+                const synth = window.speechSynthesis
+                if (!synth) {
+                  message.warning('当前浏览器不支持语音播报')
+                  return
+                }
+                // 再点一次 = 停止播报
+                if (speaking) {
+                  synth.cancel()
+                  setSpeaking(false)
+                  return
+                }
+                const parts = [
+                  dash?.city ? `${dash.city}今日提醒。` : '今日提醒。',
+                  ...tips.slice(0, 5).map((t) => `${t.title}。${t.text}`),
+                  outfit?.suggestion ? `穿搭建议：${outfit.suggestion}` : '',
+                ].filter(Boolean)
+                const text = parts.join(' ')
+                if (!text.trim()) {
+                  message.info('暂无可播报的内容')
+                  return
+                }
+
+                const speakOnce = () => {
+                  const u = new SpeechSynthesisUtterance(text)
+                  u.lang = 'zh-CN'
+                  u.rate = 1
+                  // 显式挑中文音色：默认音色常是英文引擎，读中文会整段沉默
+                  const zh = synth
+                    .getVoices()
+                    .find((v) => v.lang.replace('_', '-').toLowerCase().startsWith('zh'))
+                  if (zh) u.voice = zh
+                  u.onstart = () => setSpeaking(true)
+                  u.onend = () => setSpeaking(false)
+                  u.onerror = (ev) => {
+                    setSpeaking(false)
+                    // 用户点"停止"触发的中断不是错误
+                    if (ev.error !== 'interrupted' && ev.error !== 'canceled') {
+                      message.error(`语音播报失败（${ev.error}）。可尝试换 Chrome/Edge 浏览器`)
+                    }
+                  }
+                  synth.speak(u)
+                }
+
+                // Chrome 已知坑：cancel() 之后**同步** speak() 会被静默吞掉，
+                // 所以先 cancel，立即播一次；400ms 后若确实没在播，再补一次
+                synth.cancel()
+                speakOnce()
+                window.setTimeout(() => {
+                  if (!synth.speaking && !synth.pending) speakOnce()
+                }, 400)
+              }}
+            >
+              {speaking ? '⏹ 停止' : '🔊 播报'}
+            </Button>
+          )}
         </div>
+        {/* 加载文案刻意避开「今日提醒」这个标题词：e2e 的文本断言是子串匹配，
+            文案里再出现一次标题会让断言命中两个元素 */}
         {loading ? (
-          <Skeleton active paragraph={{ rows: 2 }} />
+          <LoadingState
+            compact
+            text="正在整理今天的注意事项…"
+            hint="要结合当天天气与你的行程逐条判断，通常 1~2 秒"
+          />
+        ) : failed ? (
+          failedHint
         ) : tips.length === 0 ? (
           <Text style={{ color: 'var(--jp-ink-2)', fontSize: 13 }}>暂无特别提醒</Text>
         ) : (
@@ -95,6 +188,9 @@ export default function Home() {
         )}
       </div>
 
+      {/* ===== 24 小时天气曲线（对手产品标配能力，Day 59 补齐） ===== */}
+      <HourlyChart city={dash?.city} />
+
       {/* ===== 今日穿搭建议（直接展示，不用跳转） ===== */}
       <div className="jp-card" style={{ padding: 20 }}>
         <div
@@ -113,10 +209,16 @@ export default function Home() {
           </Button>
         </div>
         {loading ? (
-          <Skeleton active paragraph={{ rows: 2 }} />
+          <LoadingState compact text="正在搭配今天的穿着…" hint="按当天温度、降水与风况匹配穿搭规则" />
+        ) : failed ? (
+          failedHint
         ) : outfit ? (
           <>
-            <Paragraph style={{ margin: 0, color: 'var(--jp-ink)', lineHeight: 1.9, fontSize: 14 }}>
+            {/* 手机上这条建议常常四五行长：先收成三行，想看全再展开（"文字堆在一起"的主要来源之一） */}
+            <Paragraph
+              style={{ margin: 0, color: 'var(--jp-ink)', lineHeight: 1.9, fontSize: 14 }}
+              ellipsis={isMobile ? { rows: 3, expandable: true, symbol: '展开' } : false}
+            >
               {outfit.suggestion}
             </Paragraph>
             {outfit.rules?.length ? (
@@ -222,7 +324,13 @@ export default function Home() {
         </div>
 
         {loading ? (
-          <Skeleton active paragraph={{ rows: 2 }} />
+          <LoadingState
+            compact
+            text="正在加载你的行程…"
+            hint="顺带拉取每条行程当天的天气提醒"
+          />
+        ) : failed ? (
+          failedHint
         ) : !loggedIn ? (
           <div style={{ textAlign: 'center', padding: '16px 0' }}>
             <Text style={{ color: 'var(--jp-ink-2)', fontSize: 13 }}>
@@ -259,10 +367,13 @@ export default function Home() {
                       {it.start_time}
                     </Tag>
                   )}
-                  <Text style={{ fontWeight: 600, color: 'var(--jp-ink)' }}>{it.title}</Text>
-                  {it.location && (
+                  {/* 地点名可点开地图：出门前最常确认的就是"这地方在哪" */}
+                  <Text style={{ fontWeight: 600, color: 'var(--jp-ink)' }}>
+                    <MapLink name={it.title} city={it.city} />
+                  </Text>
+                  {it.location && it.location !== it.title && (
                     <Text style={{ color: 'var(--jp-ink-3)', fontSize: 12 }}>
-                      <EnvironmentOutlined /> {it.location}
+                      <MapLink name={it.location} city={it.city} />
                     </Text>
                   )}
                 </Space>
@@ -317,7 +428,11 @@ export default function Home() {
                   <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--jp-ink)' }}>
                     {action.title}
                   </div>
-                  <Paragraph style={{ margin: '4px 0 0', fontSize: 12.5, color: 'var(--jp-ink-2)' }}>
+                  {/* 手机上只留图标 + 标题：两列布局里再塞一行说明只会更挤 */}
+                  <Paragraph
+                    className="jp-hide-mobile"
+                    style={{ margin: '4px 0 0', fontSize: 12.5, color: 'var(--jp-ink-2)' }}
+                  >
                     {action.desc}
                   </Paragraph>
                 </div>

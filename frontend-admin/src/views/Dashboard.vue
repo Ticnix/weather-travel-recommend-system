@@ -5,6 +5,10 @@ import { currentWeather, historyList, forecast, type HistoryRecord } from '../ap
 const now = ref<HistoryRecord | null>(null)
 const recentCount = ref(0)
 const forecastCount = ref(0)
+// 三张卡片初始都是「--」，加载中和取不到数据看起来完全一样，
+// 所以两个状态都要显式提示
+const loading = ref(true)
+const failed = ref(false)
 
 const cards = [
   { title: '气象时序记录', value: '--', suffix: '条', icon: '🕒', color: '#3b82f6' },
@@ -21,29 +25,45 @@ function fillCards() {
 }
 
 onMounted(async () => {
+  loading.value = true
+  failed.value = false
   try {
     now.value = await currentWeather()
   } catch {
     now.value = null
+    failed.value = true
   }
   try {
     const h = await historyList(30)
     recentCount.value = h.total
   } catch {
     recentCount.value = 0
+    failed.value = true
   }
   try {
     const f = await forecast()
     forecastCount.value = f.total
   } catch {
     forecastCount.value = 0
+    failed.value = true
   }
   fillCards()
+  loading.value = false
 })
 </script>
 
 <template>
-  <div>
+  <div v-loading="loading" element-loading-text="正在加载概览数据…">
+    <el-alert
+      v-if="failed"
+      type="warning"
+      show-icon
+      :closable="false"
+      style="margin-bottom: 16px"
+      title="部分数据没能加载出来"
+      description="下面显示 0 或 -- 的项目可能只是这次没取到，而不是真的没有数据；可刷新页面重试。"
+    />
+
     <el-row :gutter="16">
       <el-col :span="8" v-for="c in cards" :key="c.title">
         <el-card shadow="hover" class="stat-card">
@@ -73,6 +93,11 @@ onMounted(async () => {
         <div class="now-item"><span>能见度</span><b>{{ now.visibility }} km</b></div>
         <div class="now-item"><span>更新时间</span><b>{{ String(now.time).replace('T', ' ').slice(0, 19) }}</b></div>
       </div>
+    </el-card>
+    <!-- 取不到时也要给出说明，别让整块悄悄消失 -->
+    <el-card shadow="never" class="now-card" v-else-if="failed">
+      <template #header><b>最新实测天气</b></template>
+      <el-empty description="没能取到最新实测（不是没有数据），可刷新页面重试" :image-size="60" />
     </el-card>
   </div>
 </template>

@@ -107,6 +107,51 @@ def list_landmarks() -> list[dict[str, Any]]:
     return items
 
 
+async def regeo(lat: float, lon: float) -> dict[str, Any] | None:
+    """逆地理编码：坐标 → 所在行政区 {province, city, district, adcode, formatted}。
+
+    为什么需要它：用户授权定位后拿到的是经纬度，而"南沙区"这种地名才是
+    用户看得懂、也才能拿去查当地天气的键。无 Key 或失败返回 None（调用方回落城市中心）。
+    """
+    if not settings.AMAP_API_KEY:
+        return None
+
+    params = {
+        "key": settings.AMAP_API_KEY,
+        # 高德是「经度,纬度」，和本函数参数顺序相反，别弄反
+        "location": f"{lon},{lat}",
+        "extensions": "base",
+        "radius": "1000",
+    }
+    try:
+        async with httpx.AsyncClient(timeout=8.0) as client:
+            resp = await client.get(f"{settings.AMAP_BASE_URL}/geocode/regeo", params=params)
+            resp.raise_for_status()
+            data = resp.json()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("高德逆地理编码失败: %s", exc)
+        return None
+
+    if data.get("status") != "1" or not data.get("regeocode"):
+        return None
+
+    comp = data["regeocode"].get("addressComponent") or {}
+
+    def _first(value: Any) -> str:
+        """高德的 city/district 在直辖市里是空数组，统一成字符串。"""
+        if isinstance(value, list):
+            return value[0] if value else ""
+        return value or ""
+
+    return {
+        "province": _first(comp.get("province")),
+        "city": _first(comp.get("city")) or _first(comp.get("province")),
+        "district": _first(comp.get("district")),
+        "adcode": _first(comp.get("adcode")),
+        "formatted": data["regeocode"].get("formatted_address") or "",
+    }
+
+
 async def suggest_places(
     keyword: str,
     city: str | None = None,
@@ -163,6 +208,97 @@ async def suggest_places(
                 "name": name,
                 "district": tip.get("district") or "",
                 "address": tip.get("address") or "",
+                "lng": lng,
+                "lat": lat,
+            }
+        )
+        if len(items) >= limit:
+            break
+    return items
+
+
+# 高德 POI 类型码（place/text 的 types 参数）
+POI_SCENERY = "110000"  # 风景名胜
+POI_FOOD = "050000"  # 餐饮服务
+POI_SHOPPING = "060000"  # 购物服务
+
+
+async def search_pois(
+    keyword: str,
+    city: str | None = None,
+    types: str | None = None,
+    limit: int = 8,
+) -> list[dict[str, Any]]:
+    """POI 检索：关键词（可选类型）→ 候选地点，**每条都带所属行政区**。
+
+    与 suggest_places（输入联想）的分工：
+    inputtips 是"打字联想"，返回的是常见叫法、没有类型也没有行政区；
+    place/text 是真正的 POI 检索，能按类型过滤，并且返回 adname（所在区）——
+    「把行程限定在某个区」只能靠它：高德的 `city` 参数**不认区名**，
+    传 city=南沙区 会被直接忽略（实测返回的是北京的结果）。
+
+    无 Key 或调用失败时返回空列表，由调用方决定怎么兜底。
+    """
+    kw = (keyword or "").strip()
+    if not kw:
+        return []
+
+    if not settings.AMAP_API_KEY:
+        # 无 Key：本地地标兜底（没有行政区信息，区域过滤会自然失效）
+        return [
+            {
+                "name": item["name"],
+                "district": "",
+                "address": "",
+                "lng": item["lng"],
+                "lat": item["lat"],
+            }
+            for item in list_landmarks()
+            if kw in item["name"]
+        ][:limit]
+
+    params = {
+        "key": settings.AMAP_API_KEY,
+        "keywords": kw,
+        "city": city or settings.AMAP_DEFAULT_CITY,
+        "offset": str(min(max(limit, 1), 25)),
+        "page": "1",
+        "extensions": "base",
+    }
+    if types:
+        params["types"] = types
+    try:
+        async with httpx.AsyncClient(timeout=8.0) as client:
+            resp = await client.get(f"{settings.AMAP_BASE_URL}/place/text", params=params)
+            resp.raise_for_status()
+            data = resp.json()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("高德 POI 检索失败: %s", exc)
+        return []
+
+    if data.get("status") != "1":
+        return []
+
+    items: list[dict[str, Any]] = []
+    for poi in data.get("pois") or []:
+        name = (poi.get("name") or "").strip()
+        loc = poi.get("location") or ""
+        if not name or "," not in loc:
+            continue
+        try:
+            lng_str, lat_str = loc.split(",")[:2]
+            lng, lat = float(lng_str), float(lat_str)
+        except ValueError:
+            continue
+        address = poi.get("address")
+        items.append(
+            {
+                "name": name,
+                "district": poi.get("adname") or "",
+                # 部分 POI 的 address 是数组，统一成字符串，避免调用方拿到列表
+                "address": address if isinstance(address, str) else "",
+                # POI 分类（如"风景名胜;公园广场;公园"）：调用方据此过滤住宅区/公司等非景点
+                "type": poi.get("type") or "",
                 "lng": lng,
                 "lat": lat,
             }

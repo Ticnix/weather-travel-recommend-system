@@ -2,10 +2,11 @@
 
 import json
 from collections.abc import AsyncIterator
+from urllib.parse import urlparse
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import event_bus
@@ -25,19 +26,72 @@ from app.services import notification_service
 router = APIRouter(prefix="/api/v1/notifications", tags=["通知"])
 
 
+def _endpoint_host(endpoint: str) -> str:
+    """订阅端点的主机名。
+
+    设备列表在 UA 缺失时要靠它辨认「这是哪一台」：
+    web.push.apple.com = iPhone/iPad，fcm.googleapis.com = Chrome/安卓。
+    """
+    try:
+        return urlparse(endpoint).hostname or ""
+    except ValueError:
+        return ""
+
+
 @router.get("/vapid-key", response_model=dict)
 async def vapid_key(current: CurrentUser) -> dict:
     """前端 pushManager.subscribe 需要的 applicationServerKey。"""
     return success(data={"publicKey": settings.VAPID_PUBLIC_KEY})
 
 
+@router.get("/channels", response_model=dict)
+async def channel_status(current: CurrentUser, db: AsyncSession = Depends(get_db)) -> dict:
+    """当前用户两条通知通道的就绪状态。
+
+    为什么需要这个接口：前端要能明确告诉用户「为什么收不到」，
+    而不是让他从发送记录里看到一句「用户未绑定邮箱」自己猜。
+    - email：没绑定邮箱时 ready=False，前端据此给出「去绑定」引导；
+    - web_push：没有有效订阅 / 服务端未配置 VAPID 时 ready=False。
+    configured 与 ready 分开：前者是「服务端有没有能力发」，
+    后者是「这个用户现在能不能收到」，两者提示文案完全不同。
+    """
+    sub_count = await db.scalar(
+        select(func.count())
+        .select_from(PushSubscription)
+        .where(PushSubscription.user_id == current.id, PushSubscription.is_active.is_(True))
+    )
+    sub_count = sub_count or 0
+    push_configured = bool(settings.VAPID_PRIVATE_KEY)
+    email_configured = bool(settings.SMTP_HOST)
+
+    return success(
+        data={
+            "web_push": {
+                "configured": push_configured,
+                "subscriptions": sub_count,
+                "ready": push_configured and sub_count > 0,
+            },
+            "email": {
+                "configured": email_configured,
+                "bound_email": current.email,
+                "ready": email_configured and bool(current.email),
+            },
+        }
+    )
+
+
 @router.post("/subscriptions", response_model=dict)
 async def subscribe(
     payload: SubscribeIn,
+    request: Request,
     current: CurrentUser,
     db: AsyncSession = Depends(get_db),
 ) -> dict:
     """保存/更新推送订阅（以 endpoint 为唯一键，重复订阅则刷新密钥与归属）。"""
+    # UA 兜底：请求头里本来就带着它。前端若因字段名不一致漏传，
+    # 设备列表就会变成一排「未知设备」，多设备管理直接失去意义。
+    user_agent = payload.user_agent or request.headers.get("user-agent")
+
     sub = (
         await db.execute(
             select(PushSubscription).where(PushSubscription.endpoint == payload.endpoint)
@@ -48,7 +102,7 @@ async def subscribe(
         sub.user_id = current.id
         sub.p256dh = payload.keys.p256dh
         sub.auth = payload.keys.auth
-        sub.user_agent = payload.user_agent
+        sub.user_agent = user_agent
         sub.is_active = True
     else:
         sub = PushSubscription(
@@ -56,7 +110,7 @@ async def subscribe(
             endpoint=payload.endpoint,
             p256dh=payload.keys.p256dh,
             auth=payload.keys.auth,
-            user_agent=payload.user_agent,
+            user_agent=user_agent,
         )
         db.add(sub)
     await db.commit()
@@ -146,6 +200,7 @@ async def get_prefs(current: CurrentUser, db: AsyncSession = Depends(get_db)) ->
             "morning_hour": pref.morning_hour if pref else 7,
             "alert_enabled": pref.alert_enabled if pref else True,
             "itinerary_enabled": pref.itinerary_enabled if pref else True,
+            "risk_enabled": pref.risk_enabled if pref else True,
         }
     )
 
@@ -168,6 +223,7 @@ async def update_prefs(
             "morning_hour": pref.morning_hour,
             "alert_enabled": pref.alert_enabled,
             "itinerary_enabled": pref.itinerary_enabled,
+            "risk_enabled": pref.risk_enabled,
         },
         message="偏好已保存",
     )
@@ -198,6 +254,8 @@ async def my_subscriptions(current: CurrentUser, db: AsyncSession = Depends(get_
                 {
                     "id": s.id,
                     "user_agent": s.user_agent,
+                    # UA 为空时前端用 host 兜底显示，避免一排「未知设备」
+                    "endpoint_host": _endpoint_host(s.endpoint),
                     "is_active": s.is_active,
                     "created_at": s.created_at.isoformat() if s.created_at else None,
                 }

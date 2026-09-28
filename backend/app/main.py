@@ -21,6 +21,7 @@ from app.routers import (
     notes,
     notifications,
     places,
+    preferences,
     recommend,
     user_knowledge,
     users,
@@ -36,6 +37,7 @@ setup_observability(app)
 register_exception_handlers(app)
 
 # 挂载业务路由
+app.include_router(preferences.router)
 app.include_router(users.router)
 app.include_router(news.router)
 app.include_router(notifications.router)

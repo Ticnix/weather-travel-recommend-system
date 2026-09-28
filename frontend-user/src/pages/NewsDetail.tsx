@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { Alert, Button, Skeleton, Space, Tag, Typography, Divider } from 'antd'
+import { Alert, Button, Space, Tag, Typography, Divider } from 'antd'
 import {
   ArrowLeftOutlined,
   EyeOutlined,
@@ -10,6 +10,9 @@ import {
   LinkOutlined,
 } from '@ant-design/icons'
 import { getNews, type NewsItem } from '../api/news'
+import LoadingState from '../components/LoadingState'
+import EmptyState from '../components/EmptyState'
+import { useIsMobile } from '../utils/useIsMobile'
 
 const { Title, Paragraph, Text } = Typography
 
@@ -23,37 +26,64 @@ const CATEGORY_TAG: Record<string, { color: string; text: string }> = {
 export default function NewsDetail() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const isMobile = useIsMobile()
   const [news, setNews] = useState<NewsItem | null>(null)
   const [loading, setLoading] = useState(true)
+  // 「取不到」可能是没这条资讯，也可能是请求失败：两者提示不能一样，
+  // 否则服务出问题时用户会以为这篇文章被下架了
+  const [failed, setFailed] = useState(false)
 
-  useEffect(() => {
+  const load = useCallback(() => {
     if (!id) return
     setLoading(true)
+    setFailed(false)
     getNews(Number(id))
       .then(setNews)
-      .catch(() => setNews(null))
+      .catch(() => {
+        setNews(null)
+        setFailed(true)
+      })
       .finally(() => setLoading(false))
   }, [id])
+
+  useEffect(() => {
+    load()
+  }, [load])
 
   if (loading) {
     return (
       <div className="jp-card" style={{ padding: 24 }}>
-        <Skeleton active paragraph={{ rows: 10 }} />
+        <LoadingState text="正在加载资讯正文…" hint="会一并取回原文内容，通常 1~2 秒" />
       </div>
     )
   }
 
   if (!news) {
     return (
-      <div className="jp-card" style={{ padding: 60, textAlign: 'center' }}>
-        <div className="jp-serif" style={{ fontSize: 18, color: 'var(--jp-ink)' }}>资讯不存在或已下架</div>
-        <Button
-          type="primary"
-          style={{ marginTop: 16 }}
-          onClick={() => navigate('/news')}
-        >
-          返回资讯列表
-        </Button>
+      <div className="jp-card" style={{ padding: 24 }}>
+        {failed ? (
+          <EmptyState
+            type="error"
+            text="资讯正文没能加载出来"
+            hint="这不代表文章被下架，可能只是这次请求失败"
+            onRetry={load}
+            extra={
+              <Button size="small" type="primary" onClick={() => navigate('/news')}>
+                返回资讯列表
+              </Button>
+            }
+          />
+        ) : (
+          <EmptyState
+            text="资讯不存在或已下架"
+            hint="可以返回列表看看其他气象资讯"
+            extra={
+              <Button size="small" type="primary" onClick={() => navigate('/news')}>
+                返回资讯列表
+              </Button>
+            }
+          />
+        )}
       </div>
     )
   }
@@ -61,20 +91,21 @@ export default function NewsDetail() {
   const tag = CATEGORY_TAG[news.category] ?? CATEGORY_TAG.news
 
   return (
-    <div className="jp-card" style={{ padding: '28px 32px' }}>
-      <Space style={{ marginBottom: 16 }} wrap>
-        <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/news')}>
+    <div className="jp-card" style={{ padding: isMobile ? 14 : '28px 32px' }}>
+      <Space style={{ marginBottom: isMobile ? 10 : 16 }} wrap>
+        <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/news')} size={isMobile ? 'small' : 'middle'}>
           返回
         </Button>
         {news.source_url && (
           <Button
             type="link"
+            size={isMobile ? 'small' : 'middle'}
             icon={<LinkOutlined />}
             href={news.source_url}
             target="_blank"
             rel="noreferrer"
           >
-            在新窗口打开原文
+            {isMobile ? '原文' : '在新窗口打开原文'}
           </Button>
         )}
       </Space>
@@ -88,15 +119,26 @@ export default function NewsDetail() {
         )}
       </Space>
 
+      {/* 标题：h2（约 30px）在手机上会把首屏占掉一半，改用小一号并收紧行高 */}
       <Title
-        level={2}
+        level={isMobile ? 4 : 2}
         className="jp-serif"
-        style={{ marginTop: 16, lineHeight: 1.35, color: 'var(--jp-ink)' }}
+        style={{
+          marginTop: isMobile ? 10 : 16,
+          fontSize: isMobile ? 18 : undefined,
+          lineHeight: 1.4,
+          color: 'var(--jp-ink)',
+        }}
       >
         {news.title}
       </Title>
 
-      <Space size={24} style={{ color: 'var(--jp-ink-2)', fontSize: 13, marginBottom: 8 }}>
+      {/* 作者/时间/阅读数：手机上一行放不下三个，间距收到 12 并允许换行 */}
+      <Space
+        size={isMobile ? 12 : 24}
+        wrap
+        style={{ color: 'var(--jp-ink-2)', fontSize: isMobile ? 12 : 13, marginBottom: 8 }}
+      >
         <Text style={{ color: 'var(--jp-ink-2)' }}>
           <UserOutlined /> {news.author ?? '气象台'}
         </Text>
@@ -120,12 +162,16 @@ export default function NewsDetail() {
             type="success"
             showIcon
             style={{ marginBottom: 12 }}
-            message="以下为自动抓取的原文正文；若希望查看原网页排版，可点击上方「在新窗口打开原文」。"
+            message={
+              isMobile
+                ? '以下为自动抓取的原文正文'
+                : '以下为自动抓取的原文正文；若希望查看原网页排版，可点击上方「在新窗口打开原文」。'
+            }
           />
           <Paragraph
             style={{
-              fontSize: 15,
-              lineHeight: 1.9,
+              fontSize: isMobile ? 14 : 15,
+              lineHeight: isMobile ? 1.85 : 1.9,
               color: 'var(--jp-ink)',
               whiteSpace: 'pre-wrap',
               margin: 0,
@@ -141,7 +187,11 @@ export default function NewsDetail() {
             type="info"
             showIcon
             style={{ marginBottom: 12 }}
-            message="以下为该条资讯的原文页面（内嵌展示）；若加载不出来，可点击上方「在新窗口打开原文」。"
+            message={
+              isMobile
+                ? '以下为原文页面（内嵌展示）'
+                : '以下为该条资讯的原文页面（内嵌展示）；若加载不出来，可点击上方「在新窗口打开原文」。'
+            }
           />
           <iframe
             src={news.source_url}

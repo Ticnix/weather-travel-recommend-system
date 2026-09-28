@@ -23,6 +23,7 @@ celery_app = Celery(
         "app.tasks.report_tasks",
         "app.tasks.alert_tasks",
         "app.tasks.reminder_tasks",
+        "app.tasks.itinerary_risk_tasks",
     ],
 )
 
@@ -64,6 +65,13 @@ celery_app.conf.update(
         "dispatch-itinerary-reminders": {
             "task": "app.tasks.reminder_tasks.dispatch_itinerary_reminders",
             "schedule": crontab(minute="*/10"),
+        },
+        # 行程 × 天气冲突扫描（Day 51）：提前发现"预报与已排行程冲突"并给出改期建议。
+        # 每天 7:05 / 18:05：早上出门前、傍晚安排次日行程时各一次。
+        # 放在第 5 分钟而不是整点——整点已经排了早报分发，错开避免两个任务抢同一个 worker。
+        "scan-itinerary-risks": {
+            "task": "app.tasks.itinerary_risk_tasks.scan_itinerary_risks",
+            "schedule": crontab(hour="7,18", minute="5"),
         },
     },
 )

@@ -13,7 +13,7 @@ const sectionTitle = (page: Page) => page.locator('.jp-serif', { hasText: '通�
 test.describe('通知设置', () => {
   test('关掉某一类推送后刷新仍然生效', async ({ page, request }) => {
     await prepareLoggedIn(page, request, 'e2e_notify')
-    await page.goto('/profile')
+    await page.goto('/notifications')
     await expect(sectionTitle(page)).toBeVisible({ timeout: 20_000 })
 
     const alertSwitch = page.getByRole('switch', { name: '天气预警' })
@@ -30,7 +30,7 @@ test.describe('通知设置', () => {
 
   test('三类开关互不影响', async ({ page, request }) => {
     await prepareLoggedIn(page, request, 'e2e_notify_indep')
-    await page.goto('/profile')
+    await page.goto('/notifications')
     await expect(sectionTitle(page)).toBeVisible({ timeout: 20_000 })
 
     await page.getByRole('switch', { name: '行程提醒' }).click()
@@ -43,7 +43,7 @@ test.describe('通知设置', () => {
 
   test('早报关闭后不再显示推送时间', async ({ page, request }) => {
     await prepareLoggedIn(page, request, 'e2e_notify_morning')
-    await page.goto('/profile')
+    await page.goto('/notifications')
     await expect(sectionTitle(page)).toBeVisible({ timeout: 20_000 })
 
     const morningSwitch = page.getByRole('switch', { name: '每日早报' })
@@ -57,11 +57,22 @@ test.describe('通知设置', () => {
 
   test('未订阅设备时给出提示', async ({ page, request }) => {
     await prepareLoggedIn(page, request, 'e2e_notify_devices')
-    await page.goto('/profile')
+    await page.goto('/notifications')
     await expect(sectionTitle(page)).toBeVisible({ timeout: 20_000 })
 
     await expect(page.getByText('推送设备')).toBeVisible()
     // 自动化环境没有真实推送订阅，应展示空态提示而不是一片空白
     await expect(page.getByText('当前没有已订阅的设备')).toBeVisible()
+  })
+
+  test('未绑定邮箱时给出绑定引导', async ({ page, request }) => {
+    await prepareLoggedIn(page, request, 'e2e_notify_email')
+    await page.goto('/notifications')
+    await expect(sectionTitle(page)).toBeVisible({ timeout: 20_000 })
+
+    // 新账号没有邮箱：必须在界面上给出提示与绑定入口，
+    // 而不是让用户从发送记录的「用户未绑定邮箱」里自己猜去哪绑
+    await expect(page.getByText('你还没有绑定邮箱')).toBeVisible()
+    await expect(page.getByRole('button', { name: /绑定邮箱/ })).toBeVisible()
   })
 })

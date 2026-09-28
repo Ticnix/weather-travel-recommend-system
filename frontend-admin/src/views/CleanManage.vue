@@ -110,7 +110,13 @@ onMounted(() => {
       style="margin-bottom: 16px"
     />
 
-    <el-table v-loading="loading" :data="rows" border stripe>
+    <el-table
+      v-loading="loading"
+      element-loading-text="正在加载清洗任务…"
+      :data="rows"
+      border
+      stripe
+    >
       <el-table-column prop="filename" label="文件名" min-width="200" show-overflow-tooltip />
       <el-table-column label="状态" width="100">
         <template #default="{ row }">
@@ -146,7 +152,12 @@ onMounted(() => {
 
     <!-- 日志弹窗 -->
     <el-dialog v-model="logVisible" :title="`清洗日志 - ${currentFileName}`" width="720px">
-      <pre v-loading="logLoading" class="log-box">{{ currentLog }}</pre>
+      <pre
+        v-loading="logLoading"
+        element-loading-text="正在获取清洗日志…"
+        class="log-box"
+        >{{ currentLog }}</pre
+      >
     </el-dialog>
   </el-card>
 </template>

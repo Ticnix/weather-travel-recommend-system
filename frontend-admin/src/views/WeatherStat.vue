@@ -20,6 +20,7 @@ echarts.use([LineChart, BarChart, GridComponent, TooltipComponent, LegendCompone
 const chartEl = ref<HTMLDivElement | null>(null)
 const days = ref(90)
 const loading = ref(false)
+const failed = ref(false)
 const refreshing = ref(false)
 const compare = ref<{ yoy?: CompareResult; mom?: CompareResult }>({})
 let chart: ECharts | null = null
@@ -101,10 +102,13 @@ async function loadCompare() {
 
 async function reload() {
   loading.value = true
+  failed.value = false
   try {
     await Promise.all([render(), loadCompare()])
   } catch {
-    /* 拦截器提示 */
+    // 原来失败只靠拦截器闪一条 toast：图表区保持空白，
+    // 用户分不清"这段时间没数据"还是"接口没取到"
+    failed.value = true
   } finally {
     loading.value = false
   }
@@ -168,7 +172,22 @@ onBeforeUnmount(() => {
       </div>
     </template>
 
-    <div ref="chartEl" class="chart" />
+    <!-- 图表区加载慢、且失败时是空白：两种状态都得说清楚 -->
+    <el-alert
+      v-if="failed"
+      type="warning"
+      show-icon
+      :closable="false"
+      style="margin-bottom: 12px"
+      title="统计图表没能加载出来"
+      description="这不代表这段时间没有数据；可能是聚合任务还没跑或接口暂时不可用，可点右上角「刷新聚合」重试。"
+    />
+    <div
+      ref="chartEl"
+      v-loading="loading"
+      element-loading-text="正在加载统计图表…"
+      class="chart"
+    />
 
     <el-row :gutter="16" class="cmp">
       <el-col :span="12" v-for="key in (['yoy', 'mom'] as const)" :key="key">

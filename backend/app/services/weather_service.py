@@ -18,7 +18,7 @@ from typing import Any
 from app.core.config import settings
 from app.services.city_dict import lookup_city
 from app.services.qweather_client import QWeatherClient, WeatherBundle
-from app.services.weather_client import WeatherClient
+from app.services.weather_client import AirQuality, HourlyPoint, WeatherClient
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +53,33 @@ async def _open_meteo_fetch(city: str | None) -> WeatherBundle:
             lat, lon = info.lat, info.lon
             loc_code = info.name
     return await _open_meteo.fetch(latitude=lat, longitude=lon, location_code=loc_code)
+
+
+async def fetch_hourly(city: str | None = None) -> list[HourlyPoint]:
+    """逐小时预报（默认未来 24h 起点，由调用方截取）。
+
+    和风路径的 bundle.hourly 恒为空（免费订阅的逐小时接口未接入），
+    此时**直接回退 Open-Meteo**——它免费、带降水概率，
+    比给用户一个空的逐小时板块诚实。
+    """
+    bundle = await fetch_weather(city)
+    # 用 getattr：和风路径的 WeatherBundle 没有 hourly 字段（两个客户端的
+    # dataclass 形状不完全一致），直接取属性会在和风路径上 AttributeError
+    hourly = getattr(bundle, "hourly", None)
+    if hourly:
+        return hourly
+    fallback = await _open_meteo_fetch(city)
+    return fallback.hourly
+
+
+async def fetch_aqi(city: str | None = None) -> AirQuality:
+    """当前空气质量（PM2.5 / PM10 / US AQI）。城市名经 city_dict 解析成坐标。"""
+    lat = lon = None
+    if city:
+        info = lookup_city(city)
+        if info:
+            lat, lon = info.lat, info.lon
+    return await _open_meteo.fetch_aqi(lat, lon)
 
 
 async def fetch_alerts_with_fallback(city: str) -> list[Any]:

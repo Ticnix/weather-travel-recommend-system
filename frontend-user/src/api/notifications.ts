@@ -5,7 +5,9 @@
 export interface SubscribePayload {
   endpoint: string
   keys: { p256dh: string; auth: string }
-  userAgent?: string
+  /** 字段名必须与后端 SubscribeIn 一致（user_agent）：
+      写成 userAgent 会被 pydantic 直接忽略，设备列表就全成了「未知设备」 */
+  user_agent?: string
 }
 
 export interface NotificationLogItem {
@@ -74,18 +76,27 @@ export async function updateMorningReport(enabled: boolean, hour: number): Promi
 
 // ===== 通知偏好与订阅管理（Day 39）=====
 
-export type NotificationCategory = 'morning' | 'alert' | 'itinerary' | 'system'
+export type NotificationCategory =
+  | 'morning'
+  | 'alert'
+  | 'itinerary'
+  | 'itinerary_risk'
+  | 'system'
 
 export interface NotificationPrefs {
   morning_enabled: boolean
   morning_hour: number
   alert_enabled: boolean
   itinerary_enabled: boolean
+  /** 行程天气预警（Day 52）：提前 1~3 天告知"预报与已排行程冲突" */
+  risk_enabled: boolean
 }
 
 export interface SubscriptionItem {
   id: number
   user_agent: string | null
+  /** 订阅端点主机（如 web.push.apple.com）：UA 为空时用它兜底认设备 */
+  endpoint_host?: string | null
   is_active: boolean
   created_at: string | null
 }
@@ -111,4 +122,26 @@ export async function listSubscriptions(): Promise<SubscriptionItem[]> {
 /** 退订指定设备（按订阅 id，只影响这一台） */
 export async function deleteSubscription(id: number): Promise<void> {
   await http.delete(`/notifications/subscriptions/${id}`)
+}
+
+// ===== 通知通道状态（Day 43）=====
+
+/** 单条通道的就绪情况：configured=服务端有无能力发，ready=该用户当前能否收到 */
+export interface ChannelState {
+  configured: boolean
+  ready: boolean
+}
+
+export interface ChannelStatus {
+  web_push: ChannelState & { subscriptions: number }
+  email: ChannelState & { bound_email: string | null }
+}
+
+/**
+ * 查询两条通知通道的就绪状态。
+ * 前端据此给出「去绑定邮箱 / 去开启推送」的明确引导，
+ * 而不是让用户从发送记录的「用户未绑定邮箱」里自己猜原因。
+ */
+export async function getChannelStatus(): Promise<ChannelStatus> {
+  return (await http.get('/notifications/channels')) as unknown as ChannelStatus
 }

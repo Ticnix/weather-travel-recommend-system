@@ -9,6 +9,7 @@ import asyncio
 import logging
 
 from app.celery_app import celery_app
+from app.core.cache import cache_delete_prefix
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
@@ -68,5 +69,11 @@ def collect_weather_news(
             await engine.dispose()
 
     stat = _run(_job())
+    # 采集改了 news 表，清掉列表读缓存，否则页面在 5 分钟 TTL 内仍显示旧数据
+    # （定时任务不走 /news/collect 路由，不会自动清缓存，这里补上）
+    try:
+        _run(cache_delete_prefix("news:list:"))
+    except Exception:  # noqa: BLE001
+        pass
     logger.info("气象资讯采集完成: %s", stat)
     return {"ok": True, **stat}

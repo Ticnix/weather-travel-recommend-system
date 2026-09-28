@@ -1,9 +1,13 @@
 import { render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-// 组件只依赖 getCurrentWeather 一个接口，整体替换
+// 整体替换接口层。除了城市实测，组件还依赖区级接口（选择分区后才会走到）
+// 与区域列表（选择器打开时才拉）——mock 里必须都声明，否则 vitest 会报"没有该导出"
 vi.mock('../api/weather', () => ({
   getCurrentWeather: vi.fn(),
+  getLocalWeather: vi.fn(),
+  listDistricts: vi.fn(),
 }))
 
 import { getCurrentWeather } from '../api/weather'
@@ -33,7 +37,8 @@ describe('WeatherHero 首页天气主卡', () => {
     // 永不 resolve 的 Promise，模拟"请求悬着"
     mockGetCurrent.mockReturnValue(new Promise(() => {}))
     render(<WeatherHero />)
-    expect(screen.getByText('正在获取实时天气...')).toBeInTheDocument()
+    // 只转圈不够：还要说清正在取什么
+    expect(screen.getByText(/正在获取实时天气/)).toBeInTheDocument()
   })
 
   it('展示温度、天气标签与体感', async () => {
@@ -56,13 +61,26 @@ describe('WeatherHero 首页天气主卡', () => {
     expect(screen.getByText('能见度')).toBeInTheDocument()
   })
 
-  it('接口失败显示空态而不是白屏', async () => {
+  it('接口失败时说明失败原因并可重试，而不是只有一句"暂无数据"', async () => {
     mockGetCurrent.mockRejectedValue(new Error('boom'))
     render(<WeatherHero />)
 
+    // "取不到"和"本来就没有"要分开说：否则用户不会想到去重试
+    expect(await screen.findByText('天气数据没能取到')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /重新获取/ })).toBeInTheDocument()
+  })
+
+  it('失败后点重试会重新请求', async () => {
+    mockGetCurrent.mockRejectedValueOnce(new Error('boom'))
+    mockGetCurrent.mockResolvedValue(weatherData)
+    render(<WeatherHero />)
+
     await waitFor(() =>
-      expect(screen.getByText('暂无天气数据，请稍后刷新')).toBeInTheDocument(),
+      expect(screen.getByRole('button', { name: /重新获取/ })).toBeInTheDocument(),
     )
+    await userEvent.click(screen.getByRole('button', { name: /重新获取/ }))
+
+    await waitFor(() => expect(screen.getByText(/29\.9/)).toBeInTheDocument())
   })
 
   it('字段缺失时用 -- 占位而不是 undefined', async () => {

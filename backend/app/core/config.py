@@ -32,6 +32,26 @@ class Settings(BaseSettings):
     # 出问题改一行配置就能退回旧路径，不用重新发版。
     AGENT_MODE: str = "single"
 
+    # ===== 多模态（对话支持图片/语音/文件）=====
+    # 图片必须走视觉模型，所以单独配置：本项目的默认对话模型 deepseek-chat 是纯文本，
+    # 直接塞图片会 400。默认用智谱 GLM-4V——它的 Key 本项目已用于 Embedding，开箱可用。
+    VISION_PROVIDER: str = "zhipu"
+    VISION_MODEL: str = "glm-4v-flash"
+    # 语音转写后端：
+    #   none           —— 关闭（默认。没装模型时不假装支持，而是明确告诉用户怎么开）
+    #   openai         —— 任意 OpenAI 兼容的 /audio/transcriptions（智谱/通义/自建 vLLM 都行）
+    #   faster_whisper —— 本地开源（pip install faster-whisper，模型首次运行时下载）
+    ASR_PROVIDER: str = "none"
+    ASR_MODEL: str = "whisper-1"
+    ASR_BASE_URL: str = ""  # 留空则复用 LLM 提供商的 base_url
+    ASR_API_KEY: str = ""  # 留空则复用 LLM 提供商的 api_key
+    ASR_LOCAL_MODEL: str = "small"  # faster-whisper 档位：tiny/base/small/medium
+
+    # 附件限制（图片/文件/语音共用）
+    ATTACHMENT_MAX_BYTES: int = 8 * 1024 * 1024
+    ATTACHMENT_MAX_CHARS: int = 6000  # 单个附件注入提示词的最大字符数
+    ATTACHMENT_TTL_SECONDS: int = 1800  # 附件在 Redis 里的存活时间，过期需重新上传
+
     # DeepSeek（对话/生成）
     DEEPSEEK_API_KEY: str = ""
     DEEPSEEK_BASE_URL: str = "https://api.deepseek.com"
@@ -110,6 +130,11 @@ class Settings(BaseSettings):
     # 简易预警阈值（Open-Meteo 对中国无官方预警，按阈值兜底生成）
     RAIN_ALERT_MM: float = 10.0  # 24h 降水 ≥10mm 提示
     WIND_ALERT_KMH: float = 40.0  # 风速 ≥40km/h 提示
+    # 行程冲突扫描（Day 51）：与上面两份阈值**共用同一套标准**，
+    # 避免"预警页说没事、行程页说有事"这种自相矛盾。
+    HEAT_ALERT_C: float = 35.0  # 日最高温 ≥35℃：户外行程风险
+    TEMP_DROP_ALERT_C: float = 8.0  # 与前一日最高温相比的降温幅度
+    RISK_SCAN_DAYS: int = 3  # 提前扫描天数（预报窗口内）
 
     # CSV 清洗模块
     UPLOAD_DIR: str = "uploads"  # 原始 CSV 存放目录（相对 backend 工作目录）
@@ -135,6 +160,9 @@ class Settings(BaseSettings):
     SMTP_USER: str = ""
     SMTP_PASSWORD: str = ""
     SMTP_FROM: str = ""
+    # 非 465 端口是否启用 STARTTLS。真实服务商（587/25）证书可信，走 True；
+    # 本地 MailHog 等自签名证书环境 Python 会校验失败，改 False 走明文
+    SMTP_USE_TLS: bool = True
 
 
 @lru_cache

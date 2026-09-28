@@ -6,20 +6,28 @@ import { currentWeather, syncNow, syncHistory, historyList, type HistoryRecord }
 const now = ref<HistoryRecord | null>(null)
 const recent = ref<HistoryRecord[]>([])
 const syncing = ref(false)
+// 加载中 / 加载失败都要能看见：否则页面显示的空表和"确实没同步过"无法区分
+const loading = ref(true)
+const failed = ref(false)
 const backfillDays = ref(30)
 
 async function load() {
+  loading.value = true
+  failed.value = false
   try {
     now.value = await currentWeather()
   } catch {
     now.value = null
+    failed.value = true
   }
   try {
     const r = await historyList(30)
     recent.value = r.items
   } catch {
     recent.value = []
+    failed.value = true
   }
+  loading.value = false
 }
 
 async function onSync() {
@@ -55,6 +63,17 @@ onMounted(load)
 
 <template>
   <div>
+    <!-- 拉取失败时明确说出来，避免把"没取到"看成"数据库里没有" -->
+    <el-alert
+      v-if="failed"
+      type="warning"
+      show-icon
+      :closable="false"
+      style="margin-bottom: 16px"
+      title="部分数据没能加载出来"
+      description="当前实测或最近记录这次没取到，页面显示可能为空；可点「立即同步」或刷新页面重试。"
+    />
+
     <el-card shadow="never">
       <template #header><b>手动天气同步</b></template>
       <el-space wrap>
@@ -80,12 +99,23 @@ onMounted(load)
           {{ String(now.time).replace('T', ' ').slice(0, 19) }}
         </el-descriptions-item>
       </el-descriptions>
-      <el-empty v-else description="暂无数据，请先同步" />
+      <el-empty
+        v-else
+        :description="failed ? '没能取到最新实测（不是没有数据），可点上方「立即同步」重试' : '暂无数据，请先同步'"
+      />
     </el-card>
 
     <el-card shadow="never" style="margin-top: 16px">
       <template #header><b>最近 30 条实测记录</b></template>
-      <el-table :data="recent" border stripe max-height="420">
+      <el-table
+        v-loading="loading"
+        element-loading-text="正在加载实测记录…"
+        :data="recent"
+        :empty-text="failed ? '没能加载出来，可刷新后重试' : '暂无数据'"
+        border
+        stripe
+        max-height="420"
+      >
         <el-table-column label="时间" width="180">
           <template #default="{ row }">{{ String(row.time).replace('T', ' ').slice(0, 19) }}</template>
         </el-table-column>

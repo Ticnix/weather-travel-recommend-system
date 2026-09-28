@@ -3,10 +3,12 @@ import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ForecastDay } from '../api/weather'
 
-// 组件通过 api/weather 取数，这里整体替换掉，测试只关心渲染逻辑
+// 组件通过 api/weather 取数，这里整体替换掉，测试只关心渲染逻辑。
+// getLocalWeather 是"选了区"之后才会用的分支，这里也必须声明（mock 缺导出会直接报错）
 vi.mock('../api/weather', () => ({
   getForecast: vi.fn(),
   getHistory: vi.fn(),
+  getLocalWeather: vi.fn(),
 }))
 
 import { getForecast, getHistory } from '../api/weather'
@@ -146,15 +148,17 @@ describe('ForecastList 天气时间轴', () => {
     expect(screen.getAllByText('—').length).toBeGreaterThan(0)
   })
 
-  it('接口失败时不崩溃，降级为占位卡片', async () => {
+  it('接口失败时说明"没取到"并给出重试入口', async () => {
     mockForecast.mockRejectedValue(new Error('boom'))
     mockHistory.mockRejectedValue(new Error('boom'))
 
     render(<ForecastList />)
 
-    // 关键：异常被 catch 住，界面仍然完整（7 张占位卡），不是白屏
-    await waitForCards(7)
-    expect(screen.getAllByText('暂无')).toHaveLength(7)
+    // 关键：异常被 catch 住，界面不会白屏；
+    // 但也不能降级成一排「—」的灰卡——那会让用户以为"天气就是空的"，
+    // 分不清是没数据还是没取到
+    expect(await screen.findByText('天气数据没能取到')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /重新加载/ })).toBeInTheDocument()
   })
 
   it('即使没有历史数据，时间轴依然正常渲染', async () => {

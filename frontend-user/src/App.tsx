@@ -1,8 +1,9 @@
 import { lazy, Suspense } from 'react'
-import { ConfigProvider, Spin, theme } from 'antd'
+import { ConfigProvider, theme } from 'antd'
 import zhCN from 'antd/locale/zh_CN'
 import { BrowserRouter, Route, Routes } from 'react-router-dom'
 import MainLayout from './layouts/MainLayout'
+import LoadingState from './components/LoadingState'
 
 // 路由级懒加载：各页面独立拆包，首屏只加载当前页面所需 chunk，
 // 显著降低首屏 JS 体积（原实现为静态导入，所有页面打进一个 bundle）
@@ -15,8 +16,12 @@ const Recommend = lazy(() => import('./pages/Recommend'))
 const Profile = lazy(() => import('./pages/Profile'))
 const Login = lazy(() => import('./pages/Login'))
 const Itinerary = lazy(() => import('./pages/Itinerary'))
+const Notifications = lazy(() => import('./pages/Notifications'))
+const Analysis = lazy(() => import('./pages/Analysis'))
+const MyKnowledge = lazy(() => import('./pages/MyKnowledge'))
 
-// 懒加载兜底：页面 chunk 下载期间展示居中 loading，避免白屏
+// 懒加载兜底：页面 chunk 下载期间既要占位、也要说明在等什么
+// （只有一个转圈时，用户无法判断是"在加载"还是"页面坏了"）
 function PageLoading() {
   return (
     <div
@@ -27,7 +32,7 @@ function PageLoading() {
         minHeight: '45vh',
       }}
     >
-      <Spin size="large" />
+      <LoadingState text="页面加载中…" hint="首次打开需要下载页面资源，通常 1~2 秒" />
     </div>
   )
 }
@@ -102,6 +107,9 @@ function App() {
             <Route path="/recommend" element={<Recommend />} />
             <Route path="/profile" element={<Profile />} />
             <Route path="/itinerary" element={<Itinerary />} />
+            <Route path="/notifications" element={<Notifications />} />
+            <Route path="/analysis" element={<Analysis />} />
+            <Route path="/my-knowledge" element={<MyKnowledge />} />
           </Route>
           </Routes>
         </Suspense>

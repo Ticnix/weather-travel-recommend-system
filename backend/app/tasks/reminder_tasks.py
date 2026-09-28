@@ -5,16 +5,20 @@
 所以补一个最小但真实可用的提醒：行程开始前 30 分钟提醒一次。
 
 **「只提醒一次」是怎么保证的**：
-任务每 10 分钟跑一次（与 beat 间隔一致），提醒窗口取「距出发 25~35 分钟」。
-一条行程的出发时刻必然只落在一个 10 分钟窗口里，天然不会重复，
-**不需要在库里额外记「已提醒」状态**——少一份状态就少一类不一致。
+判重不靠时间窗口的巧合，而是查发送记录（见 `_reminder_sent_today`）：
+窗口内每 10 分钟扫一次，扫到但今天已经发过就跳过。
+
+**为什么不用「窗口宽度 = beat 间隔」那个更巧的写法**：
+它要求 beat 必须准点跑——一旦 beat 延迟、重启，或者 worker 在那一刻忙，
+10 分钟的窗口一过，提醒就永远丢了，而且没有任何痕迹（实际踩到过）。
+现在窗口放宽到「出发前 35 分钟内」，容忍一次调度抖动，重复由记录拦住。
 """
 
 from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import datetime, time
+from datetime import UTC, datetime, time
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -23,6 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.celery_app import celery_app
 from app.models.itinerary import Itinerary
+from app.models.notification import NotificationLog
 from app.services import notification_service
 
 logger = logging.getLogger(__name__)
@@ -33,8 +38,9 @@ logger = logging.getLogger(__name__)
 CN_TZ = ZoneInfo("Asia/Shanghai")
 
 REMIND_LEAD_MINUTES = 30
-WINDOW_LOW = 25.0  # 距出发 25 分钟
-WINDOW_HIGH = 35.0  # 到 35 分钟为止（左闭右开，窗口宽度 = beat 间隔）
+# 距出发多久以内算「该提醒了」。上限给到 35 分钟而不是掐在 30：
+# 多出的 5 分钟是给调度抖动的余量，真正的判重在 _reminder_sent_today
+WINDOW_HIGH = 35.0
 
 
 def parse_start_time(value: str | None) -> time | None:
@@ -49,13 +55,14 @@ def parse_start_time(value: str | None) -> time | None:
 
 
 def is_due(start_time: str | None, now: datetime) -> bool:
-    """该行程现在是否到了提醒时间（距出发 25~35 分钟）。"""
+    """该行程现在是否到了提醒时间：还没出发，且距出发不超过 35 分钟。"""
     parsed = parse_start_time(start_time)
     if parsed is None:
         return False
     start = datetime.combine(now.date(), parsed, tzinfo=now.tzinfo)
     minutes_left = (start - now).total_seconds() / 60
-    return WINDOW_LOW <= minutes_left < WINDOW_HIGH
+    # 已经出发（或正好到点）就不提醒了：出发后再说"记得预留路上时间"没有意义
+    return 0 < minutes_left <= WINDOW_HIGH
 
 
 def build_reminder(item: Itinerary) -> tuple[str, str]:
@@ -65,6 +72,33 @@ def build_reminder(item: Itinerary) -> tuple[str, str]:
         f"⏰ {item.start_time} 出发提醒",
         f"「{item.title}」还有约 {REMIND_LEAD_MINUTES} 分钟开始（{where}），记得预留路上时间。",
     )
+
+
+async def _reminder_sent_today(db: AsyncSession, item: Itinerary, now: datetime) -> bool:
+    """今天是否已经为这条行程处理过提醒（发过、或被偏好拦下）。
+
+    用发送记录判重，而不是给行程表加一个「已提醒」字段：
+    历史记录本来就要写，不额外增加写入，也少一份可能与实际不一致的状态。
+
+    只有 **failed** 不算数——网络抖动导致发送失败时，
+    下一次扫描（窗口内每 10 分钟一次）应该再试，而不是就此吞掉。
+    """
+    since = datetime.combine(now.date(), time(0, 0), tzinfo=now.tzinfo).astimezone(UTC)
+    title, _ = build_reminder(item)
+    found = await db.execute(
+        select(NotificationLog.id)
+        .where(
+            NotificationLog.user_id == item.user_id,
+            NotificationLog.category == "itinerary",
+            NotificationLog.title == title,
+            # 正文前缀带上行程标题，避免"两条行程同一出发时间"互相顶掉
+            NotificationLog.body.like(f"「{item.title}」%"),
+            NotificationLog.status != "failed",
+            NotificationLog.created_at >= since,
+        )
+        .limit(1)
+    )
+    return found.scalar_one_or_none() is not None
 
 
 async def send_due_reminders(db: AsyncSession, now: datetime | None = None) -> dict[str, Any]:
@@ -89,6 +123,8 @@ async def send_due_reminders(db: AsyncSession, now: datetime | None = None) -> d
     for item in items:
         if not is_due(item.start_time, now):
             continue
+        if await _reminder_sent_today(db, item, now):
+            continue  # 今天已经提醒过（或被偏好拦下），不要重复打扰
         title, body = build_reminder(item)
         try:
             # category="itinerary"：被用户的行程提醒开关拦下时会记 skipped

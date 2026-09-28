@@ -35,6 +35,27 @@ logger = logging.getLogger(__name__)
 # 推送服务判定「订阅已失效」的状态码：此时应删除订阅而不是继续重试
 _EXPIRED_STATUS = {404, 410}
 
+# 推送失败的翻译表：原始异常是 Python 连接池文本，
+# 直接写进「最近发送记录」用户只能看到 HTTPSConnectionPool(host=...)
+_PUSH_ERROR_HINTS: tuple[tuple[str, str], ...] = (
+    ("BadJwtToken", "推送签名被服务商拒绝（VAPID 配置问题，请联系管理员）"),
+    ("Failed to resolve", "推送服务器域名解析失败：当前网络连不上推送服务"),
+    ("NameResolutionError", "推送服务器域名解析失败：当前网络连不上推送服务"),
+    ("Max retries exceeded", "推送服务器连不上（网络不可达），可换网络或改用邮件通知"),
+    ("Connection refused", "推送服务器拒绝连接"),
+    ("Read timed out", "连接推送服务超时"),
+    ("TooLarge", "推送内容超过服务商大小限制"),
+)
+
+
+def _friendly_push_error(exc: Exception) -> str:
+    """把推送异常翻译成用户能看懂的一句话，并带上原始关键字便于排查。"""
+    text = str(exc)
+    for marker, friendly in _PUSH_ERROR_HINTS:
+        if marker.lower() in text.lower():
+            return f"{friendly}（{marker}）"
+    return text[:300]
+
 
 def _webpush_once(subscription_info: dict[str, Any], payload: str) -> None:
     """单次 Web Push 发送（同步库，调用方负责放线程池）。"""
@@ -55,13 +76,21 @@ def _smtp_send(to: str, subject: str, html_body: str) -> None:
     msg.attach(MIMEText(html_body, "html", "utf-8"))
 
     if settings.SMTP_PORT == 465:
+        # 465 为隐式 SSL，直接用 SMTP_SSL（QQ 邮箱等走这条）
         with smtplib.SMTP_SSL(settings.SMTP_HOST, settings.SMTP_PORT, timeout=10) as smtp:
             smtp.login(settings.SMTP_USER, settings.SMTP_PASSWORD)
             smtp.send_message(msg)
-    else:
+    elif settings.SMTP_USE_TLS:
+        # 587 / 25 等端口：STARTTLS 升级（真实服务商，证书可信）
         with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=10) as smtp:
             smtp.starttls()
             smtp.login(settings.SMTP_USER, settings.SMTP_PASSWORD)
+            smtp.send_message(msg)
+    else:
+        # 本地 MailHog 等自签名证书环境：明文直发（SMTP_USE_TLS=False）
+        with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=10) as smtp:
+            if settings.SMTP_USER:
+                smtp.login(settings.SMTP_USER, settings.SMTP_PASSWORD)
             smtp.send_message(msg)
 
 
@@ -103,12 +132,15 @@ CATEGORY_PREF_FIELD: dict[str, str] = {
     "morning": "morning_enabled",
     "alert": "alert_enabled",
     "itinerary": "itinerary_enabled",
+    # 行程天气预警（Day 52）：提前 1~3 天告知"预报与行程冲突"
+    "itinerary_risk": "risk_enabled",
 }
 
 CATEGORY_LABEL: dict[str, str] = {
     "morning": "每日早报",
     "alert": "天气预警",
     "itinerary": "行程提醒",
+    "itinerary_risk": "行程天气预警",
     "system": "系统通知",
 }
 
@@ -233,10 +265,10 @@ async def _send_web_push(
                     sent += 1
                 except Exception as exc2:  # noqa: BLE001
                     failed += 1
-                    last_error = str(exc2)
+                    last_error = _friendly_push_error(exc2)
         except Exception as exc:  # noqa: BLE001
             failed += 1
-            last_error = str(exc)
+            last_error = _friendly_push_error(exc)
 
     # 清理失效订阅：留着只会每次推送白发，还会被推送服务限流
     if expired:
@@ -249,6 +281,11 @@ async def _send_web_push(
         status = "failed"
     else:
         status = "skipped"
+    # 多设备场景：有一部分成功时状态仍是 sent（毕竟有设备收到了），
+    # 但必须把"哪几台没收到"写清楚——否则记录里出现"已发送 + 一段报错"，
+    # 用户根本判断不了自己的手机到底收到了没有
+    if sent and failed and last_error:
+        last_error = f"部分设备发送失败（{failed}/{len(subs)}）：{last_error}"
     return await log(status, last_error)
 
 

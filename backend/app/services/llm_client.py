@@ -61,21 +61,25 @@ def _resolve_provider(provider: str) -> tuple[str, str, str]:
     return api_key, base_url, model
 
 
-def get_llm(provider: str | None = None, **kwargs: Any) -> ChatOpenAI:
+def get_llm(
+    provider: str | None = None, model: str | None = None, **kwargs: Any
+) -> ChatOpenAI:
     """按提供商获取（并缓存）ChatOpenAI 实例。
 
     参数：
     - provider: 提供商名，默认取 settings.LLM_PROVIDER
-    - kwargs: 透传 ChatOpenAI 额外参数（如 temperature / timeout），便于调用方覆盖
+    - model:    覆盖该提供商的默认模型（多模态要用视觉模型，如 glm-4v-flash）
+    - kwargs:   透传 ChatOpenAI 额外参数（如 temperature / timeout），便于调用方覆盖
 
     说明：
-    - 同一提供商只实例化一次，缓存在 _llm_cache
-    - 不同提供商各自独立缓存，切换 provider 互不影响
+    - 缓存键是 provider+model：同一提供商的不同模型（文本 vs 视觉）必须各存一份，
+      否则先要了文本模型、后面再要视觉模型时会拿到错误实例
     """
     provider = (provider or settings.LLM_PROVIDER).lower()
-    api_key, base_url, model = _resolve_provider(provider)
+    api_key, base_url, default_model = _resolve_provider(provider)
+    chosen_model = model or default_model
 
-    cache_key = provider
+    cache_key = f"{provider}:{chosen_model}"
     if cache_key not in _llm_cache:
         if not api_key:
             # 未配置 Key 时用占位符实例化，避免实例化即抛异常；
@@ -83,7 +87,7 @@ def get_llm(provider: str | None = None, **kwargs: Any) -> ChatOpenAI:
             logger.warning("提供商 %s 未配置 API Key，实际调用将失败", provider)
             api_key = "sk-placeholder"
         _llm_cache[cache_key] = ChatOpenAI(
-            model=model,
+            model=chosen_model,
             api_key=api_key,
             base_url=base_url,
             temperature=0.3,
@@ -92,6 +96,72 @@ def get_llm(provider: str | None = None, **kwargs: Any) -> ChatOpenAI:
             **kwargs,
         )
     return _llm_cache[cache_key]
+
+
+# ===== 视觉模型可用性状态 =====
+# 为什么需要它：Key 配了但无效（过期/复制不全/账号无权限）时，
+# 如果仍走视觉路径，用户每张图都会失败——**反而比不配 Key 更糟**，
+# 因为不配时还能走离线 OCR 兜底。所以这里记录"最近一次被拒"的状态，
+# 让附件层据此自动退回 OCR；带 TTL 是为了换 Key 后能自愈。
+_VISION_BROKEN_TTL = 600.0  # 10 分钟
+_vision_broken: tuple[float, str] | None = None  # (时间戳, 原因)
+
+
+def mark_vision_broken(reason: str) -> None:
+    """视觉模型被服务商拒绝（401/403/404）时调用，暂时禁用视觉路径。"""
+    global _vision_broken
+    import time
+
+    _vision_broken = (time.time(), reason)
+    logger.warning("视觉模型被拒，%s 秒内改用 OCR 兜底：%s", int(_VISION_BROKEN_TTL), reason)
+
+
+def vision_broken_reason() -> str | None:
+    """当前是否处于"视觉模型被拒"状态；超过 TTL 自动失效（换 Key 能自愈）。"""
+    if _vision_broken is None:
+        return None
+    import time
+
+    stamp, reason = _vision_broken
+    if time.time() - stamp > _VISION_BROKEN_TTL:
+        return None
+    return reason
+
+
+def build_multimodal_message(prompt: str, image_urls: list[str]) -> HumanMessage:
+    """构造图文消息：文本 + 若干图片（data URL）。
+
+    用 OpenAI 兼容的 content 数组格式，智谱 GLM-4V / 通义 qwen-vl / OpenAI 都是这一套，
+    所以不必为每家写适配。图片用 data URL 直接内联——省掉"先把图片传到某个图床"这一步。
+    """
+    content: list[dict[str, Any]] = [{"type": "text", "text": prompt}]
+    for url in image_urls:
+        content.append({"type": "image_url", "image_url": {"url": url}})
+    return HumanMessage(content=content)
+
+
+async def astream_multimodal(
+    prompt: str,
+    image_urls: list[str],
+    system: str | None = None,
+    provider: str | None = None,
+    model: str | None = None,
+):
+    """流式调用视觉模型，逐段吐出文本。异常由调用方兜底。"""
+    llm = get_llm(provider, model)
+    messages: list = []
+    if system:
+        messages.append(SystemMessage(content=system))
+    messages.append(build_multimodal_message(prompt, image_urls))
+
+    async for chunk in llm.astream(messages):
+        piece = chunk.content
+        if isinstance(piece, str) and piece:
+            yield piece
+        elif isinstance(piece, list):  # 少数实现会返回 content 片段数组
+            for part in piece:
+                if isinstance(part, dict) and part.get("type") == "text":
+                    yield part.get("text", "")
 
 
 async def ainvoke(prompt: str, system: str | None = None, provider: str | None = None) -> str:

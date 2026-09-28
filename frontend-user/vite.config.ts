@@ -39,7 +39,9 @@ export default defineConfig({
         ],
       },
       workbox: {
-        globPatterns: ['**/*.{js,css,html,svg,png,ico,woff,woff2}'],
+        // 注意把 gif 也带上：加载图标是 gif，漏掉它的话断网时图标会裂成空白，
+        // 而"加载中"恰恰是最可能发生在弱网/离线场景下的一屏
+        globPatterns: ['**/*.{js,css,html,svg,png,gif,webp,ico,woff,woff2}'],
         // 默认上限 2MB，大 chunk 会被静默漏掉，提到 3MB
         maximumFileSizeToCacheInBytes: 3 * 1024 * 1024,
         // SPA 路由回退：断网时任意前端路由都能拿到应用外壳（否则刷新子路由会 404）
@@ -82,10 +84,20 @@ export default defineConfig({
   ],
   server: {
     port: 5173,
+    // 监听所有网卡：手机/平板要访问这个 dev 服务器时必需
+    // （只监听 localhost 的话，隧道或局域网都连不进来）
+    host: true,
+    // Vite 默认会拦掉 Host 不匹配的请求（防 DNS rebinding 攻击）。
+    // 手机通过 Cloudflare 隧道访问时 Host 是 xxx.trycloudflare.com，
+    // 而 quick tunnel 的域名每次重启都会变，所以按域名后缀整段放行。
+    // 注意：只放行隧道域名，不要图省事写成 true（那等于把校验全关掉）。
+    allowedHosts: ['.trycloudflare.com'],
     proxy: {
-      // 开发模式将 /api 代理到本地后端，避免跨域
+      // 开发模式将 /api 代理到本地后端，避免跨域。
+      // 默认 8001 是本机另起的 uvicorn；跑 Docker 后端时用
+      // VITE_API_TARGET=http://127.0.0.1:8000 覆盖（见根目录 dev-user.ps1）
       '/api': {
-        target: 'http://127.0.0.1:8001',
+        target: process.env.VITE_API_TARGET || 'http://127.0.0.1:8001',
         changeOrigin: true,
       },
     },

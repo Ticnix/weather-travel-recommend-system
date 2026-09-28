@@ -12,9 +12,13 @@ const mocks = vi.hoisted(() => ({
   removeSubscription: vi.fn(),
   saveSubscription: vi.fn(),
   sendTestNotification: vi.fn(),
+  getChannelStatus: vi.fn(),
+  updateProfile: vi.fn(),
 }))
 
 vi.mock('../api/notifications', () => mocks)
+// 邮箱绑定复用「更新用户资料」接口，这里单独 mock 掉，避免测试里发真实请求
+vi.mock('../api/auth', () => ({ updateProfile: mocks.updateProfile }))
 
 import NotificationSettings from './NotificationSettings'
 
@@ -38,6 +42,11 @@ beforeEach(() => {
   }))
   mocks.listSubscriptions.mockResolvedValue([])
   mocks.getNotificationLogs.mockResolvedValue([])
+  // 默认：两条通道都可用但尚未就绪（未订阅设备 + 未绑定邮箱）
+  mocks.getChannelStatus.mockResolvedValue({
+    web_push: { configured: true, subscriptions: 0, ready: false },
+    email: { configured: true, bound_email: null, ready: false },
+  })
 })
 
 /**
@@ -83,6 +92,7 @@ describe('NotificationSettings', () => {
       {
         id: 7,
         user_agent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0) Safari/604.1',
+        endpoint_host: 'web.push.apple.com',
         is_active: true,
         created_at: '2026-09-16T08:00:00+00:00',
       },
@@ -119,5 +129,62 @@ describe('NotificationSettings', () => {
     // 否则用户只会觉得"推送坏了"，查不到其实是自己关的
     expect(await screen.findByText('预警', undefined, FIND)).toBeInTheDocument()
     expect(screen.getByText('用户已关闭「天气预警」')).toBeInTheDocument()
+  })
+
+  it('未绑定邮箱时给出绑定引导', async () => {
+    render(<NotificationSettings />)
+
+    // 未绑定时必须在界面上说清，而不是只在发送记录里写「用户未绑定邮箱」
+    expect(await screen.findByText('你还没有绑定邮箱', undefined, FIND)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /绑定邮箱/ })).toBeInTheDocument()
+  })
+
+  it('填写合法邮箱后调用绑定接口', async () => {
+    mocks.updateProfile.mockResolvedValue({})
+    render(<NotificationSettings />)
+    const input = await screen.findByPlaceholderText(
+      '请输入邮箱，例如 name@example.com',
+      undefined,
+      FIND,
+    )
+
+    await userEvent.type(input, 'me@example.com')
+    await userEvent.click(screen.getByRole('button', { name: /绑定邮箱/ }))
+
+    await waitFor(() =>
+      expect(mocks.updateProfile).toHaveBeenCalledWith({ email: 'me@example.com' }),
+    )
+  })
+
+  it('邮箱格式非法时不提交并提示', async () => {
+    render(<NotificationSettings />)
+    const input = await screen.findByPlaceholderText(
+      '请输入邮箱，例如 name@example.com',
+      undefined,
+      FIND,
+    )
+
+    await userEvent.type(input, 'not-an-email')
+    await userEvent.click(screen.getByRole('button', { name: /绑定邮箱/ }))
+
+    expect(
+      await screen.findByText('邮箱格式不正确，请检查后重试', undefined, FIND),
+    ).toBeInTheDocument()
+    expect(mocks.updateProfile).not.toHaveBeenCalled()
+  })
+
+  it('已绑定邮箱时展示邮箱并可解绑', async () => {
+    mocks.getChannelStatus.mockResolvedValue({
+      web_push: { configured: true, subscriptions: 0, ready: false },
+      email: { configured: true, bound_email: 'me@example.com', ready: true },
+    })
+    mocks.updateProfile.mockResolvedValue({})
+    render(<NotificationSettings />)
+
+    expect(await screen.findByText('me@example.com', undefined, FIND)).toBeInTheDocument()
+
+    // antd 会给两个汉字按钮插入空格（「解绑」→「解 绑」），用正则兼容
+    await userEvent.click(screen.getByRole('button', { name: /解\s*绑/ }))
+    await waitFor(() => expect(mocks.updateProfile).toHaveBeenCalledWith({ email: null }))
   })
 })

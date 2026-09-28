@@ -9,6 +9,7 @@ from app.models.news import News
 from app.models.notification import NotificationLog, NotificationPref, PushSubscription
 from app.models.trip_note import TripNote
 from app.models.user import User
+from app.models.user_preference import UserPreference
 from app.models.user_knowledge import UserKnowledge
 from app.models.weather import WeatherHistory
 from app.models.weather_alert import WeatherAlert

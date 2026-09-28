@@ -81,7 +81,13 @@ onMounted(load)
       </div>
     </template>
 
-    <el-table v-loading="loading" :data="rows" border stripe>
+    <el-table
+      v-loading="loading"
+      element-loading-text="正在加载反馈列表…"
+      :data="rows"
+      border
+      stripe
+    >
       <el-table-column type="index" width="50" />
       <el-table-column prop="content" label="反馈内容" min-width="240" show-overflow-tooltip />
       <el-table-column label="提交人" width="100">

@@ -1,5 +1,6 @@
 """气象管理接口：手动同步、查询最新实测/预报/预警。"""
 
+import logging
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -12,9 +13,17 @@ from app.db.session import get_db
 from app.models.user import User
 from app.models.weather import WeatherHistory
 from app.schemas.weather import SyncResult, WeatherHistoryOut
-from app.services import index_service, weather_analysis, weather_sync
+from app.services import (
+    index_service,
+    local_weather_service,
+    weather_analysis,
+    weather_service,
+    weather_sync,
+)
 
 router = APIRouter(prefix="/api/v1/weather", tags=["气象数据"])
+
+logger = logging.getLogger(__name__)
 
 
 def _to_out(w: WeatherHistory) -> dict:
@@ -102,6 +111,53 @@ async def current_weather(
     if data is None:
         return success(None, message="暂无数据，请先同步")
     return success(data)
+
+
+@router.get("/local", response_model=dict)
+async def local_weather(
+    district: str | None = Query(None, description="市辖区名，如「南沙区」"),
+    lat: float | None = Query(None, ge=-90, le=90, description="纬度（浏览器定位）"),
+    lon: float | None = Query(None, ge=-180, le=180, description="经度（浏览器定位）"),
+) -> dict:
+    """按「区」或经纬度取当地天气（公开）。
+
+    为什么需要它：广州南北跨度 100+ 公里，南沙和从化同一天能差 3~5℃，
+    只按城市中心一个点取数等于让全城用户看同一个数字。
+
+    两种输入任选：
+    - `lat` + `lon`：浏览器定位给的坐标（最准），后端逆地理编码成区名再取数
+    - `district`：用户手动选的区名（如「南沙区」）
+
+    返回里带 `location.precision`：district=区级 / city=只能到市中心——
+    退级时必须让前端能如实说明，而不是让用户以为这就是他家门口的天气。
+    """
+    try:
+        data = await local_weather_service.get_local_weather(
+            district=district, lat=lat, lon=lon
+        )
+    except Exception as exc:  # noqa: BLE001 上游不可用不该抛 500 给前端
+        # 必须打日志并带上异常类型：httpx.ConnectError 这类异常的 str() 是空字符串，
+        # 只把 str(exc) 丢给前端，用户和排查的人都只会看到"取不到："后面什么也没有
+        logger.exception("区级天气取数失败 district=%s lat=%s lon=%s", district, lat, lon)
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                f"当地天气暂时取不到（{type(exc).__name__}），请稍后重试；"
+                "也可以先用「不用区域定位」看城市天气"
+            ),
+        ) from exc
+    return success(data)
+
+
+@router.get("/districts", response_model=dict)
+async def districts(city: str = Query("广州", description="城市名")) -> dict:
+    """某城市可选的市辖区列表（公开，供前端区域选择器使用）。
+
+    `has_coords=False` 的区没有收录区中心坐标，选了只能按市中心取数——
+    前端据此在选项上直接标注，避免用户以为选谁都一样准。
+    """
+    items = local_weather_service.list_districts(city)
+    return success({"city": city, "items": items, "total": len(items)})
 
 
 @router.get("/forecast", response_model=dict)
@@ -192,6 +248,81 @@ async def analysis_daily(
     """日粒度趋势序列（读连续聚合 weather_daily）。"""
     items = await weather_analysis.daily_series(db, location, days=days)
     return success({"items": items, "total": len(items), "location_code": location, "days": days})
+
+
+@router.get("/aqi", response_model=dict)
+async def aqi_now(
+    current: CurrentUser,
+    city: str = Query("广州", max_length=20),
+) -> dict:
+    """当前空气质量。国内标准按 PM2.5 浓度分级（GB 3095），US AQI 一并返回供参考。"""
+    aq = await weather_service.fetch_aqi(city)
+    pm25 = aq.pm25
+    if pm25 is None:
+        level, color = "暂无数据", "default"
+    elif pm25 <= 35:
+        level, color = "优", "green"
+    elif pm25 <= 75:
+        level, color = "良", "blue"
+    elif pm25 <= 115:
+        level, color = "轻度污染", "orange"
+    elif pm25 <= 150:
+        level, color = "中度污染", "volcano"
+    elif pm25 <= 250:
+        level, color = "重度污染", "red"
+    else:
+        level, color = "严重污染", "magenta"
+    return success(
+        {
+            "city": city,
+            "pm25": aq.pm25,
+            "pm10": aq.pm10,
+            "us_aqi": aq.us_aqi,
+            "level": level,
+            "color": color,
+        }
+    )
+
+
+@router.get("/hourly", response_model=dict)
+async def hourly_forecast(
+    current: CurrentUser,
+    city: str = Query("广州", max_length=20),
+    hours: int = Query(24, ge=6, le=48),
+) -> dict:
+    """逐小时预报（默认未来 24 小时），供首页温度曲线使用。
+
+    起点计算用 **Asia/Shanghai 的当前时间**而不是服务器 now()：
+    部署机时区常是 UTC，直接比较会把曲线起点切到"8 小时前"。
+    点的时间是请求时区的 naive 本地时间，统一抹掉 tzinfo 再比较。
+    """
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    points = await weather_service.fetch_hourly(city)
+    now = datetime.now(ZoneInfo("Asia/Shanghai")).replace(tzinfo=None)
+
+    def _naive(dt: datetime) -> datetime:
+        return dt.replace(tzinfo=None) if dt.tzinfo else dt
+
+    upcoming = [p for p in points if _naive(p.time) >= now][:hours]
+    return success(
+        {
+            "city": city,
+            "items": [
+                {
+                    "date": p.time.strftime("%m-%d"),
+                    "time": p.time.strftime("%H:%M"),
+                    "temperature": p.temperature,
+                    "precip_prob": p.precip_prob,
+                    "precip": p.precip,
+                    "weather_desc": p.weather_desc,
+                    "wind_speed": p.wind_speed,
+                }
+                for p in upcoming
+            ],
+        }
+    )
 
 
 @router.get("/analysis/compare", response_model=dict)

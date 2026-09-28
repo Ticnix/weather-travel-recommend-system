@@ -105,6 +105,29 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  # Celery beat：定时调度器（每天 7:30 / 17:30 抓气象资讯、整点早报、每 10 分钟预警等）。
+  # 只负责把任务塞进 Redis，真正执行仍是 celery worker，故 beat 无状态、可随时重启。
+  # 注意：beat_schedule 定义在 backend/app/celery_app.py，改调度频率去那里调。
+  celery-beat:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: ghcr.io/ticnix/weather-backend:${IMAGE_TAG:-latest}
+    container_name: weather-celery-beat
+    working_dir: /app
+    env_file:
+      - ${ENV_FILE:-./backend/.env}
+    environment:
+      DB_URL: postgresql+asyncpg://admin:123456@postgres:5432/weather_db
+      REDIS_URL: redis://redis:6379/0
+    command: celery -A app.celery_app beat -l info
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
   # 用户端（React19 + Vite，Nginx 托管静态资源并代理 /api）
   frontend-user:
     build:
@@ -129,6 +152,16 @@ services:
       - "8081:80"
     depends_on:
       - backend
+    restart: unless-stopped
+
+  # 本地邮件捕获（验收用）：SMTP 收下的信存内存，网页 localhost:8025 可看，
+  # 不真正投递到公网邮箱。接真实邮箱时改 backend/.env 的 SMTP_* 即可。
+  mailhog:
+    image: mailhog/mailhog
+    container_name: weather-mailhog
+    ports:
+      - "1025:1025" # SMTP
+      - "8025:8025" # Web UI
     restart: unless-stopped
 
 volumes:

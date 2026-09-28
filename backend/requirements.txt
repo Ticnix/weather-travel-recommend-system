@@ -25,3 +25,20 @@ langchain-mcp-adapters>=0.1.0
 # 不能依赖别人的传递依赖。
 pywebpush>=2.0.0
 httpx>=0.27.0
+# 农历换算（中秋/春节/端午这类节日无法用固定公历表示）。
+# 纯 Python、无传递依赖；未安装时 holiday_calendar 会降级为"不认农历节日"。
+lunardate>=0.2.2
+
+# ===== 多模态附件解析 =====
+# 三个都是纯 Python、无重型传递依赖；任一未装时对应格式会明确报"暂不支持该格式"，
+# 而不是让整个附件功能挂掉（见 attachment_service 的惰性导入）。
+pypdf>=5.0.0           # PDF 抽文本
+python-docx>=1.1.0     # Word (.docx)
+openpyxl>=3.1.0        # Excel (.xlsx)
+# 图片文字识别（离线兜底）：没配视觉模型时，截图类图片靠它抽文字给文本模型。
+# 开源、ONNX 运行时、不需要 PyTorch；未安装时该兜底自动关闭（见 ocr_service）。
+rapidocr-onnxruntime>=1.4.0
+# 语音转写（本地开源、**不需要任何 Key**）：faster-whisper 是 CTranslate2 版的
+# Whisper，自带 PyAV 解码（因此不需要系统 ffmpeg）。模型在 Dockerfile 里预下载，
+# 运行时不再依赖外网；ASR_PROVIDER=faster_whisper 即可开启。
+faster-whisper>=1.0.0

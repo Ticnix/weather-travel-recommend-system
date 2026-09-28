@@ -19,6 +19,7 @@ export async function streamChat(
   message: string,
   conversationId: string,
   onEvent: (evt: StreamEvent) => void,
+  attachmentIds: string[] = [],
 ): Promise<void> {
   const token = getToken()
   const resp = await fetch('/api/v1/chat/stream', {
@@ -27,7 +28,11 @@ export async function streamChat(
       'Content-Type': 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
-    body: JSON.stringify({ message, conversation_id: conversationId }),
+    body: JSON.stringify({
+      message,
+      conversation_id: conversationId,
+      attachments: attachmentIds,
+    }),
   })
 
   if (!resp.ok || !resp.body) throw new Error('流式请求失败')
@@ -56,6 +61,32 @@ export async function streamChat(
       }
     }
   }
+}
+
+// ===== 多模态附件 =====
+
+export interface AttachmentMeta {
+  id: string
+  kind: 'image' | 'audio' | 'document'
+  name: string
+  mime: string
+  size: number
+  /** 解析摘要（"已解析 1523 字" / "语音已转写：明天去南沙…"），直接展示给用户 */
+  preview: string
+  chars: number
+}
+
+/**
+ * 上传对话附件（图片 / 语音 / 文件）。
+ *
+ * 后端在上传时就完成解析（图片留原图、语音转写、文件抽文本），
+ * 返回的 id 在发消息时带上即可——所以这里不需要关心文件内容怎么用。
+ * 超时放宽到 60s：语音转写和 PDF 解析都可能要十几秒。
+ */
+export async function uploadAttachment(file: File): Promise<AttachmentMeta> {
+  const form = new FormData()
+  form.append('file', file)
+  return http.post('/chat/attachments', form, { timeout: 60000 })
 }
 
 // 历史会话（仅登录用户持久化）

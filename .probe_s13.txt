@@ -1,0 +1,59 @@
+﻿== skills 目录树 ==
+skills\__init__.py	65
+skills\itinerary_planner\SKILL.md	2206
+skills\itinerary_planner\__init__.py	27
+skills\itinerary_planner\scripts\planner.py	32667
+skills\itinerary_planner\scripts\__init__.py	0
+skills\itinerary_planner\scripts\__pycache__\planner.cpython-312.pyc	38996
+skills\itinerary_planner\scripts\__pycache__\planner.cpython-313.pyc	25605
+skills\itinerary_planner\scripts\__pycache__\__init__.cpython-312.pyc	146
+skills\itinerary_planner\scripts\__pycache__\__init__.cpython-313.pyc	194
+skills\itinerary_planner\__pycache__\__init__.cpython-312.pyc	138
+skills\itinerary_planner\__pycache__\__init__.cpython-313.pyc	186
+skills\itinerary_reminder\SKILL.md	1136
+skills\itinerary_reminder\__init__.py	35
+skills\itinerary_reminder\references\reminder-guide.md	700
+skills\itinerary_reminder\scripts\reminder.py	4603
+skills\itinerary_reminder\scripts\__init__.py	0
+skills\itinerary_reminder\scripts\__pycache__\reminder.cpython-312.pyc	6489
+skills\itinerary_reminder\scripts\__pycache__\reminder.cpython-313.pyc	6716
+skills\itinerary_reminder\scripts\__pycache__\__init__.cpython-312.pyc	147
+skills\itinerary_reminder\scripts\__pycache__\__init__.cpython-313.pyc	195
+skills\itinerary_reminder\__pycache__\__init__.cpython-312.pyc	184
+skills\itinerary_reminder\__pycache__\__init__.cpython-313.pyc	232
+skills\outfit_recommend\SKILL.md	1263
+skills\outfit_recommend\__init__.py	29
+skills\outfit_recommend\references\preference-rules.md	550
+skills\outfit_recommend\references\scene-rules.md	862
+skills\outfit_recommend\references\temp-rules.md	477
+skills\outfit_recommend\references\weather-rules.md	507
+skills\outfit_recommend\scripts\outfit_engine.py	7134
+skills\outfit_recommend\scripts\__init__.py	0
+skills\outfit_recommend\scripts\__pycache__\outfit_engine.cpython-312.pyc	8459
+skills\outfit_recommend\scripts\__pycache__\outfit_engine.cpython-313.pyc	8640
+skills\outfit_recommend\scripts\__pycache__\__init__.cpython-312.pyc	145
+skills\outfit_recommend\scripts\__pycache__\__init__.cpython-313.pyc	193
+skills\outfit_recommend\__pycache__\__init__.cpython-312.pyc	176
+skills\outfit_recommend\__pycache__\__init__.cpython-313.pyc	224
+skills\travel_planning\SKILL.md	1497
+skills\travel_planning\__init__.py	29
+skills\travel_planning\references\scoring-rules.md	1180
+skills\travel_planning\scripts\route_planner.py	6038
+skills\travel_planning\scripts\__init__.py	0
+skills\travel_planning\scripts\__pycache__\route_planner.cpython-312.pyc	7974
+skills\travel_planning\scripts\__pycache__\route_planner.cpython-313.pyc	8173
+skills\travel_planning\scripts\__pycache__\__init__.cpython-312.pyc	144
+skills\travel_planning\scripts\__pycache__\__init__.cpython-313.pyc	192
+skills\travel_planning\__pycache__\__init__.cpython-312.pyc	175
+skills\travel_planning\__pycache__\__init__.cpython-313.pyc	223
+skills\__pycache__\__init__.cpython-312.pyc	195
+skills\__pycache__\__init__.cpython-313.pyc	243
+
+== skill_loader.py 大小 ==
+3027 bytes
+
+== knowledge_loader / knowledge_base 相关 ==
+embedding_client.py	4232
+index_service.py	10789
+knowledge_loader.py	3359
+user_knowledge_service.py	5092

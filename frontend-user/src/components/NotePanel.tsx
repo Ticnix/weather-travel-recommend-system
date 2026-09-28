@@ -6,7 +6,6 @@ import {
   Input,
   Modal,
   Popconfirm,
-  Skeleton,
   Space,
   Tabs,
   Tag,
@@ -28,6 +27,8 @@ import {
 import MDEditor from '@uiw/react-md-editor'
 import '@uiw/react-md-editor/markdown-editor.css'
 import '@uiw/react-markdown-preview/markdown.css'
+import LoadingState from './LoadingState'
+import EmptyState from './EmptyState'
 import dayjs, { type Dayjs } from 'dayjs'
 import {
   createNote,
@@ -66,6 +67,7 @@ function downloadBlob(blob: Blob, filename: string) {
 export default function NotePanel() {
   const [items, setItems] = useState<NoteItem[]>([])
   const [loading, setLoading] = useState(true)
+  const [failed, setFailed] = useState(false)
   const [keyword, setKeyword] = useState('')
 
   // 编辑器状态
@@ -85,11 +87,15 @@ export default function NotePanel() {
 
   const load = useCallback(async (kw?: string) => {
     setLoading(true)
+    setFailed(false)
     try {
       const res = await listNotes(kw)
       setItems(res.items)
     } catch {
-      /* 失败提示已由 http 拦截器统一处理 */
+      // 拦截器的 toast 一闪而过，页面本身仍会显示"还没有笔记"——
+      // 用户会以为自己的笔记丢了
+      setItems([])
+      setFailed(true)
     } finally {
       setLoading(false)
     }
@@ -250,7 +256,16 @@ export default function NotePanel() {
       {/* 列表 */}
       {loading ? (
         <div className="jp-card" style={{ padding: 24 }}>
-          <Skeleton active paragraph={{ rows: 4 }} />
+          <LoadingState text="正在加载笔记…" hint="会连同搜索条件一起取回，通常 1~2 秒" />
+        </div>
+      ) : failed ? (
+        <div className="jp-card" style={{ padding: 20 }}>
+          <EmptyState
+            type="error"
+            text="笔记没能加载出来"
+            hint="这不是「笔记丢了」，而是这次没取到；点重试即可"
+            onRetry={() => void load()}
+          />
         </div>
       ) : items.length === 0 ? (
         <div className="jp-card" style={{ padding: '40px 20px' }}>

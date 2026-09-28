@@ -149,6 +149,7 @@ onMounted(load)
     <!-- 表格 -->
     <el-table
       v-loading="loading"
+      element-loading-text="正在加载气象数据…"
       :data="rows"
       border
       stripe

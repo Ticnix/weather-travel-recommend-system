@@ -69,3 +69,20 @@ export async function register(payload: {
 export async function fetchMe(): Promise<AuthUser> {
   return http.get('/users/me')
 }
+
+/**
+ * 更新当前用户资料（昵称 / 邮箱等）。
+ *
+ * 只允许改自己的资料：user_id 从本地登录态取，避免调用方传错 id 改到别人。
+ * 成功后同步本地缓存，刷新后首屏即为新值。
+ */
+export async function updateProfile(payload: {
+  nickname?: string
+  email?: string | null
+}): Promise<AuthUser> {
+  const user = getStoredUser()
+  if (!user) throw new Error('未登录')
+  const updated = (await http.put(`/users/${user.id}`, payload)) as unknown as AuthUser
+  localStorage.setItem(USER_KEY, JSON.stringify({ ...user, ...updated }))
+  return updated
+}

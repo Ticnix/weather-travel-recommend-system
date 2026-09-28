@@ -14,6 +14,45 @@ from app.services import itinerary_service
 router = APIRouter(prefix="/api/v1/itinerary", tags=["行程管理"])
 
 
+@router.get("/risks", response_model=dict)
+async def list_risks(
+    current: CurrentUser,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> dict:
+    """未来几天的行程天气风险（行程页徽标用）。
+
+    数据源是 Day 51 的 `assess_user_risks()`：与定时预警**同一套规则**，
+    所以页面上看到的和推送里说的必然一致——如果分两套实现，
+    迟早会出现"页面上标了风险、却从没收到提醒"这种对不上的情况。
+    """
+    from app.services import itinerary_risk
+
+    risks = await itinerary_risk.assess_user_risks(current.id, db)
+    # 按行程 id 建索引：前端每条行程直接查表，不用自己遍历
+    by_item = {r["itinerary_id"]: r for r in risks if r.get("itinerary_id") is not None}
+    return success({"items": risks, "by_itinerary": by_item, "total": len(risks)})
+
+
+@router.get("/export.ics")
+async def export_ics(current: CurrentUser, db: Annotated[AsyncSession, Depends(get_db)]):
+    """导出未来一年的行程为 .ics，可导入 iOS / Google 等系统日历。
+
+    返回**纯文本日历**而不是项目的统一响应包装：
+    日历客户端解析的是 RFC 5545 文本，套一层 code/message 它就读不懂了。
+    """
+    from fastapi.responses import Response
+
+    from app.services import ics_export
+
+    items = await ics_export.collect_future(current.id, db)
+    text = ics_export.build_ics(items)
+    return Response(
+        content=text,
+        media_type="text/calendar; charset=utf-8",
+        headers={"Content-Disposition": 'attachment; filename="itinerary.ics"'},
+    )
+
+
 @router.post("", response_model=dict, status_code=status.HTTP_201_CREATED)
 async def create_itinerary(
     payload: ItineraryCreate,

@@ -64,24 +64,26 @@ class TestIsDue:
     def test_距出发三十分钟时提醒(self):
         assert reminder_tasks.is_due("10:00", _at(9, 30)) is True
 
-    def test_窗口边界(self):
-        assert reminder_tasks.is_due("10:00", _at(9, 35)) is True  # 差 25 分钟，进窗口
-        assert reminder_tasks.is_due("10:00", _at(9, 25)) is False  # 差 35 分钟，右开
+    def test_窗口上限(self):
+        assert reminder_tasks.is_due("10:00", _at(9, 25)) is True  # 差 35 分钟，进窗口
         assert reminder_tasks.is_due("10:00", _at(9, 24)) is False  # 差 36 分钟，还早
 
     def test_太早与已出发都不提醒(self):
         assert reminder_tasks.is_due("10:00", _at(8, 0)) is False
         assert reminder_tasks.is_due("09:00", _at(9, 30)) is False
+        assert reminder_tasks.is_due("10:00", _at(10, 0)) is False  # 正好到点
+        assert reminder_tasks.is_due("10:00", _at(10, 5)) is False  # 已经出发
 
     def test_缺少时间或格式不对不提醒(self):
         assert reminder_tasks.is_due(None, _at(9, 30)) is False
         assert reminder_tasks.is_due("上午十点", _at(9, 30)) is False
 
-    def test_每条行程只会命中一个窗口(self):
-        # beat 每 10 分钟触发一次，窗口宽度也是 10 分钟 →
-        # 一条行程恰好只被提醒一次，因此不需要在库里记「已提醒」
+    def test_窗口比调度间隔宽(self):
+        # 窗口 35 分钟 > beat 间隔 10 分钟：一次扫描延迟或 worker 忙都不会漏掉，
+        # 重复由发送记录拦住（见 TestReminderDedupe）。
+        # 旧实现窗口掐在 25~35 分钟，与 beat 间隔严丝合缝——beat 一抖就永远漏。
         hits = [reminder_tasks.is_due("10:00", _at(9, m)) for m in range(0, 60, 10)]
-        assert sum(hits) == 1
+        assert sum(hits) >= 3
 
 
 class TestSendDueReminders:
@@ -138,3 +140,81 @@ class TestSendDueReminders:
         stat = await reminder_tasks.send_due_reminders(db, now=_at(9, 30))
 
         assert stat["checked"] == 0
+
+
+class TestReminderDedupe:
+    """「只提醒一次」原来靠窗口宽度与调度间隔对齐，现在靠发送记录判重。"""
+
+    async def test_同一行程不会提醒两次(self, db):
+        user = await _user(db, "dedupe_user")
+        await _itinerary(db, user.id)  # 10:00 出发
+
+        await reminder_tasks.send_due_reminders(db, now=_at(9, 30))
+        first = (await db.execute(select(NotificationLog))).scalars().all()
+        assert first
+
+        # 10 分钟后再扫：仍在窗口内（还差 20 分钟），但不该再发一次
+        stat = await reminder_tasks.send_due_reminders(db, now=_at(9, 40))
+        second = (await db.execute(select(NotificationLog))).scalars().all()
+
+        assert len(second) == len(first)
+        assert stat["sent"] == 0
+        assert stat["skipped"] == 0
+
+    async def test_错过前几次扫描仍能补提醒(self, db):
+        # 9:20 还太早，9:40 才扫到（模拟 beat 延迟 / worker 忙 / 服务重启）。
+        # 旧窗口是 9:25~9:35，这一条会永远收不到提醒，且没有任何痕迹。
+        user = await _user(db, "late_user")
+        await _itinerary(db, user.id)
+
+        await reminder_tasks.send_due_reminders(db, now=_at(9, 20))
+        assert (await db.execute(select(NotificationLog))).scalars().all() == []
+
+        stat = await reminder_tasks.send_due_reminders(db, now=_at(9, 40))
+
+        assert stat["checked"] == 1
+        assert (await db.execute(select(NotificationLog))).scalars().all()
+
+    async def test_发送失败的下一次扫描会重试(self, db):
+        user = await _user(db, "retry_user")
+        await _itinerary(db, user.id)
+        title, body = reminder_tasks.build_reminder(
+            Itinerary(user_id=user.id, title="白云山爬山", date="2026-09-16", start_time="10:00")
+        )
+        db.add(
+            NotificationLog(
+                user_id=user.id,
+                channel="web_push",
+                category="itinerary",
+                title=title,
+                body=body,
+                status="failed",
+                error="推送服务器连不上",
+                created_at=_at(9, 30),
+            )
+        )
+        await db.commit()
+
+        await reminder_tasks.send_due_reminders(db, now=_at(9, 35))
+
+        logs = (await db.execute(select(NotificationLog))).scalars().all()
+        # 失败那条不算"已提醒"，所以这次又写入了新的发送记录（两条通道各一条）
+        assert len(logs) > 1
+        assert any(log.status == "skipped" for log in logs)
+
+    async def test_被偏好拦下后不再重复记录(self, db):
+        user = await _user(db, "pref_user")
+        await _itinerary(db, user.id)
+        pref = await notification_service.get_prefs(db, user.id)
+        pref.itinerary_enabled = False
+        await db.commit()
+
+        await reminder_tasks.send_due_reminders(db, now=_at(9, 30))
+        first = (await db.execute(select(NotificationLog))).scalars().all()
+        assert first
+
+        await reminder_tasks.send_due_reminders(db, now=_at(9, 40))
+        second = (await db.execute(select(NotificationLog))).scalars().all()
+
+        # skipped 也算"处理过了"：否则关掉开关的用户每 10 分钟被记一条
+        assert len(second) == len(first)

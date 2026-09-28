@@ -1,0 +1,20 @@
+﻿image=2026-09-18 17:46:00 +0800 CST
+docker :  Container weather-backend Running 
+所在位置 C:\Users\Administrator\AppData\Local\Temp\genie-ps-1789724640817-z456cc.ps1:813 字符: 300
++ ... ng utf8 fe-check.txt; docker compose up -d frontend-user *>&1 | Out-F ...
++                           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ( Container weather-backend Running :String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+ Container weather-redis Running 
+ Container weather-pg Running 
+ Container weather-frontend-user Recreate 
+ Container weather-frontend-user Recreated 
+ Container weather-pg Waiting 
+ Container weather-redis Waiting 
+ Container weather-pg Healthy 
+ Container weather-redis Healthy 
+ Container weather-frontend-user Starting 
+ Container weather-frontend-user Started 
+Up Less than a second
+done

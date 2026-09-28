@@ -97,6 +97,31 @@ class WeatherAlert:
 
 
 @dataclass
+class HourlyPoint:
+    """逐小时预报点（Open-Meteo hourly）。
+
+    time 是**请求时区（Asia/Shanghai）的 naive 本地时间**：
+    Open-Meteo 带 timezone 参数时返回本地时间、不带偏移。
+    """
+
+    time: datetime
+    temperature: float | None
+    precip_prob: float | None  # 降水概率 %
+    precip: float | None  # 降水量 mm
+    weather_desc: str | None
+    wind_speed: float | None
+
+
+@dataclass
+class AirQuality:
+    """当前空气质量（Open-Meteo air-quality，免费源；和风 AQI 属付费能力）。"""
+
+    pm25: float | None
+    pm10: float | None
+    us_aqi: int | None
+
+
+@dataclass
 class WeatherBundle:
     """一次拉取的完整气象数据包。"""
 
@@ -104,10 +129,53 @@ class WeatherBundle:
     daily: list[DailyForecast]
     alerts: list[WeatherAlert]
     location_code: str
+    # 和风路径不产出逐小时（免费订阅的 /24h 未接），默认空列表；
+    # 需要逐小时的调用方走 fetch_hourly()（会自动回退 Open-Meteo）
+    hourly: list[HourlyPoint] = field(default_factory=list)
 
 
 class WeatherClient:
     """Open-Meteo 客户端。"""
+
+    _AQI_URL = "https://air-quality-api.open-meteo.com/v1/air-quality"
+
+    async def fetch_aqi(
+        self, latitude: float | None = None, longitude: float | None = None
+    ) -> AirQuality:
+        """当前空气质量（PM2.5 / PM10 / US AQI）。免费源，无 Key。"""
+        lat = latitude if latitude is not None else settings.DEFAULT_LATITUDE
+        lon = longitude if longitude is not None else settings.DEFAULT_LONGITUDE
+        params = {
+            "latitude": lat,
+            "longitude": lon,
+            "current": "pm10,pm2_5,us_aqi",
+            "timezone": "Asia/Shanghai",
+        }
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            resp = await client.get(self._AQI_URL, params=params)
+            resp.raise_for_status()
+            cur = resp.json().get("current", {})
+        return AirQuality(pm25=cur.get("pm2_5"), pm10=cur.get("pm10"), us_aqi=cur.get("us_aqi"))
+
+    _AQI_URL = "https://air-quality-api.open-meteo.com/v1/air-quality"
+
+    async def fetch_aqi(
+        self, latitude: float | None = None, longitude: float | None = None
+    ) -> AirQuality:
+        """当前空气质量（PM2.5 / PM10 / US AQI）。免费源，无 Key。"""
+        lat = latitude if latitude is not None else settings.DEFAULT_LATITUDE
+        lon = longitude if longitude is not None else settings.DEFAULT_LONGITUDE
+        params = {
+            "latitude": lat,
+            "longitude": lon,
+            "current": "pm10,pm2_5,us_aqi",
+            "timezone": "Asia/Shanghai",
+        }
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            resp = await client.get(self._AQI_URL, params=params)
+            resp.raise_for_status()
+            cur = resp.json().get("current", {})
+        return AirQuality(pm25=cur.get("pm2_5"), pm10=cur.get("pm10"), us_aqi=cur.get("us_aqi"))
 
     def __init__(
         self,
@@ -191,6 +259,10 @@ class WeatherClient:
                 "weather_code,temperature_2m_max,temperature_2m_min,"
                 "precipitation_sum,wind_speed_10m_max,sunrise,sunset"
             ),
+            "hourly": (
+                "temperature_2m,precipitation_probability,precipitation,"
+                "weather_code,wind_speed_10m"
+            ),
             "forecast_days": 7,
             "past_days": max(0, min(past_days, 92)),
         }
@@ -202,8 +274,11 @@ class WeatherClient:
         current = self._parse_current(data.get("current", {}))
         daily = self._parse_daily(data.get("daily", {}))
         alerts = self._derive_alerts(current, daily)
+        hourly = self._parse_hourly(data.get("hourly", {}))
 
-        return WeatherBundle(current=current, daily=daily, alerts=alerts, location_code=loc)
+        return WeatherBundle(
+            current=current, daily=daily, alerts=alerts, location_code=loc, hourly=hourly
+        )
 
     @staticmethod
     def _parse_current(c: dict[str, Any]) -> CurrentWeather:
@@ -224,6 +299,25 @@ class WeatherClient:
             visibility=(vis_m / 1000.0) if vis_m is not None else None,
             raw=c,
         )
+
+    @staticmethod
+    def _parse_hourly(h: dict[str, Any]) -> list[HourlyPoint]:
+        """hourly 数组 → HourlyPoint 列表。降水概率可能整段缺失（历史回补），逐项兜 None。"""
+        times = h.get("time", []) or []
+        out: list[HourlyPoint] = []
+        for i, t in enumerate(times):
+            code = _idx(h.get("weather_code"), i)
+            out.append(
+                HourlyPoint(
+                    time=_parse_dt(t),
+                    temperature=_idx(h.get("temperature_2m"), i),
+                    precip_prob=_idx(h.get("precipitation_probability"), i),
+                    precip=_idx(h.get("precipitation"), i),
+                    weather_desc=WMO_CODE_DESC.get(code) if code is not None else None,
+                    wind_speed=_idx(h.get("wind_speed_10m"), i),
+                )
+            )
+        return out
 
     @staticmethod
     def _parse_daily(d: dict[str, Any]) -> list[DailyForecast]:
