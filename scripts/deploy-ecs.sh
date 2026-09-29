@@ -137,6 +137,11 @@ done
 log "执行数据库迁移（alembic upgrade head）..."
 docker compose -f docker-compose.yml -f docker-compose.prod.yml exec -T backend \
   alembic upgrade head || warn "alembic 失败，请排查：docker compose logs backend"
+# alembic 迁移只覆盖部分表（chat_messages/itineraries/trip_notes 等不在迁移里），
+# 全量建表走项目自带的 init_db 脚本（create_all 幂等，已存在的表会跳过）：
+log "补全剩余数据表（python -m app.scripts.init_db）..."
+docker compose -f docker-compose.yml -f docker-compose.prod.yml exec -T backend \
+  python -m app.scripts.init_db || warn "init_db 失败，请排查：docker compose logs backend"
 
 # ---------- 7. 输出访问信息 ----------
 PUB_IP="$(curl -fsS --max-time 5 ip.sb || curl -fsS --max-time 5 ifconfig.me || echo '<你的公网IP>')"
