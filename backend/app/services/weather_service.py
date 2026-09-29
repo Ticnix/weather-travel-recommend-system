@@ -56,12 +56,45 @@ async def _open_meteo_fetch(city: str | None) -> WeatherBundle:
 
 
 async def fetch_hourly(city: str | None = None) -> list[HourlyPoint]:
-    """逐小时预报（默认未来 24h 起点，由调用方截取）。
+    """逐小时预报。**主源：和风 /weather/24h**（免费档、国内直连稳定）；
+    失败或未配和风 Key 时回退 Open-Meteo（境外源，本网络下时常被掐 TLS）。
 
-    和风路径的 bundle.hourly 恒为空（免费订阅的逐小时接口未接入），
-    此时**直接回退 Open-Meteo**——它免费、带降水概率，
-    比给用户一个空的逐小时板块诚实。
+    两条源在返回前归一化成同一种 HourlyPoint（路由/前端不感知差异）。
     """
+    from datetime import datetime
+
+    def _f(v: Any) -> float | None:
+        try:
+            return float(v) if v not in (None, "", "-") else None
+        except (TypeError, ValueError):
+            return None
+
+    # --- 主源：和风 24h ---
+    try:
+        rows = await _qweather.fetch_hourly24(city)
+        points: list[HourlyPoint] = []
+        for r in rows:
+            fx = (r.get("fxTime") or "").replace("+08:00", "")
+            try:
+                t = datetime.fromisoformat(fx)
+            except ValueError:
+                continue
+            points.append(
+                HourlyPoint(
+                    time=t.replace(tzinfo=None) if t.tzinfo else t,
+                    temperature=_f(r.get("temp")),
+                    precip_prob=_f(r.get("pop")),
+                    precip=_f(r.get("precip")),
+                    weather_desc=(r.get("text") or None),
+                    wind_speed=_f(r.get("windSpeed")),
+                )
+            )
+        if points:
+            return points
+    except Exception as exc:  # noqa: BLE001 主源失败回退，不让逐小时板块整体 500
+        logger.warning("和风逐小时失败，回退 Open-Meteo: %s", exc)
+
+    # --- 备源：Open-Meteo ---
     bundle = await fetch_weather(city)
     # 用 getattr：和风路径的 WeatherBundle 没有 hourly 字段（两个客户端的
     # dataclass 形状不完全一致），直接取属性会在和风路径上 AttributeError

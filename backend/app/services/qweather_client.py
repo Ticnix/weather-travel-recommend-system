@@ -258,6 +258,17 @@ class QWeatherClient:
             raise RuntimeError(f"和风天气 API 错误 code={data.get('code')}: {data.get('msg')}")
         return data
 
+    async def fetch_hourly24(self, location: str | None = None) -> list[dict[str, Any]]:
+        """和风 24 小时预报（免费开发订阅即含此接口，国内直连稳定）。
+
+        返回**原始字段字典**（fxTime/temp/pop/precip/text/windSpeed…），
+        字段命名与 Open-Meteo 不同——归一化统一在 weather_service.fetch_hourly 做，
+        两条源在服务层汇合成同一种 HourlyPoint。
+        """
+        loc = location or settings.QWEATHER_DEFAULT_LOCATION
+        data = await self._get("/weather/24h", loc)
+        return data.get("hourly", [])
+
     async def fetch(self, location: str | None = None) -> WeatherBundle:
         """一次性拉取实时 + 7 天预报 + 官方预警（同一城市）。"""
         loc = location or settings.QWEATHER_DEFAULT_LOCATION

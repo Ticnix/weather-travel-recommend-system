@@ -30,7 +30,7 @@ services:
       POSTGRES_PASSWORD: "123456"
       POSTGRES_DB: weather_db
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - pg_data:/var/lib/postgresql/data
       # 初始化脚本：自动启用 timescaledb / vector / postgis 三大扩展
@@ -46,7 +46,7 @@ services:
     image: redis:7.2-alpine
     container_name: weather-redis
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -74,7 +74,7 @@ services:
     # uvicorn 自带的 access log 与其重复且无 request_id，只会在日志里制造噪音
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --no-access-log
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     depends_on:
       postgres:
         condition: service_healthy
@@ -160,8 +160,8 @@ services:
     image: mailhog/mailhog
     container_name: weather-mailhog
     ports:
-      - "1025:1025" # SMTP
-      - "8025:8025" # Web UI
+      - "127.0.0.1:1025:1025" # SMTP
+      - "127.0.0.1:8025:8025" # Web UI
     restart: unless-stopped
 
 volumes:
