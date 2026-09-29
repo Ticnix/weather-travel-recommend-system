@@ -39,6 +39,31 @@ fi
 docker compose version >/dev/null 2>&1 || die "docker compose 仍不可用"
 log "Docker 就绪：$(docker --version)"
 
+# ---------- 1.5 配置 Docker Hub 国内镜像加速（国内服务器直连 docker.io 会超时）----------
+if grep -q 'registry-mirrors' /etc/docker/daemon.json 2>/dev/null; then
+  log "镜像加速已配置，跳过"
+else
+  log "配置 Docker Hub 国内镜像加速..."
+  mkdir -p /etc/docker
+  cat > /etc/docker/daemon.json <<'EOF'
+{
+  "registry-mirrors": [
+    "https://docker.1ms.run",
+    "https://docker.m.daocloud.io",
+    "https://hub.rat.dev",
+    "https://docker.1panel.live"
+  ]
+}
+EOF
+  systemctl daemon-reload && systemctl restart docker
+  sleep 2
+fi
+if docker info 2>/dev/null | grep -q 'registry-mirrors\|Mirrors'; then
+  log "镜像加速生效：$(docker info 2>/dev/null | grep -A4 'Mirrors' | tr '\n' ' ')"
+else
+  warn "未检测到镜像加速配置，拉镜像可能超时。备用方案：阿里云控制台搜「容器镜像服务」→ 镜像加速器，拿到个人专属地址（形如 https://xxxx.mirror.aliyuncs.com），加进 /etc/docker/daemon.json 的 registry-mirrors 数组后 systemctl restart docker"
+fi
+
 # ---------- 2. 加 4G swap（2核4G 构建必加，防 OOM）----------
 if swapon --show | grep -q '/swapfile'; then
   log "swap 已存在，跳过"
