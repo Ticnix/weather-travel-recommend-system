@@ -29,7 +29,8 @@
 | 故障处置（Docker/网络） | [docs/runbooks/](docs/runbooks/) |
 | 关键技术决策及原因 | [docs/decisions/](docs/decisions/) |
 | 全部历史：28 天开发日志、踩坑记录 | [docs/history/](docs/history/)（原 28天开发计划.md / 工作日志.md / 知识点剖析.md） |
-| 面试/求职材料 | [博客/](博客/)、简历项目经历-AI出行推荐系统.md |
+| 运维/部署脚本 | `scripts/`（deploy.sh、deploy-ecs.sh、dev-user.ps1、start-public.ps1，均已自动定位仓库根） |
+| 面试/求职材料 | [博客/](博客/)、[docs/learning/](docs/learning/)（含简历项目经历） |
 
 ## Done criteria
 
