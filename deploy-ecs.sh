@@ -78,7 +78,17 @@ free -h | head -2
 # ---------- 3. 拉取代码 ----------
 if [ -d "$REPO_DIR/.git" ]; then
   log "代码目录已存在，git pull..."
-  git -C "$REPO_DIR" pull --ff-only
+  PULL_OK=0
+  for i in 1 2 3; do
+    if git -C "$REPO_DIR" pull --ff-only; then PULL_OK=1; break; fi
+    warn "git pull 第 $i/3 次失败（GitHub 网络抖动），3 秒后重试..."
+    sleep 3
+  done
+  if [ "$PULL_OK" -eq 1 ]; then
+    log "代码已更新到最新"
+  else
+    warn "git pull 始终失败，继续使用服务器上已有的代码（功能完整，只是可能不是最新提交）"
+  fi
 else
   log "克隆代码 → $REPO_DIR"
   if ! git clone "$REPO_URL" "$REPO_DIR"; then
