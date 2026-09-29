@@ -1,0 +1,40 @@
+# ============================================================
+# 生产环境覆盖（docker-compose.prod.yml）
+#
+# 用法（由 deploy-ecs.sh 自动调用，也可手动）：
+#   ENV_FILE=./backend/.env.prod PG_PASSWORD=<随机密码> \
+#     docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+#
+# 与开发版的区别：
+#   1. PostgreSQL / Redis 不再映射宿主机端口（仅容器间访问，公网不可达）
+#   2. 移除 MailHog（验收工具，不该上生产）
+#   3. 数据库密码走 PG_PASSWORD 环境变量，不写死在文件里
+# ============================================================
+
+services:
+  postgres:
+    environment:
+      POSTGRES_PASSWORD: "${PG_PASSWORD}"
+    ports: []                      # 覆盖开发版的 5432:5432，禁止公网暴露
+
+  redis:
+    ports: []                      # 覆盖开发版的 6379:6379
+
+  backend:
+    environment:
+      DB_URL: postgresql+asyncpg://admin:${PG_PASSWORD}@postgres:5432/weather_db
+      REDIS_URL: redis://redis:6379/0
+
+  celery:
+    environment:
+      DB_URL: postgresql+asyncpg://admin:${PG_PASSWORD}@postgres:5432/weather_db
+      REDIS_URL: redis://redis:6379/0
+
+  celery-beat:
+    environment:
+      DB_URL: postgresql+asyncpg://admin:${PG_PASSWORD}@postgres:5432/weather_db
+      REDIS_URL: redis://redis:6379/0
+
+  # 默认不启动；只有显式带 --profile mailhog 才会拉起
+  mailhog:
+    profiles: ["mailhog-off"]
